@@ -1,7 +1,13 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import { checkDatabaseHealth, closePool } from '@reachinbox/db';
-import { checkRedisHealth, closeRedis, createEmailWorker, type Worker } from '@reachinbox/redis';
+import { checkDatabaseHealth, closePool, query } from '@reachinbox/db';
+import {
+  checkRedisHealth,
+  closeRedis,
+  createEmailWorker,
+  DEFAULT_JOB_ATTEMPTS,
+  type Worker,
+} from '@reachinbox/redis';
 import { RATE_LIMIT_DEFAULTS } from '@reachinbox/shared';
 import { processEmailJob } from './processor.js';
 import { runStartupReconciliation } from './reconciler.js';
@@ -59,8 +65,31 @@ async function bootstrap() {
     console.log(`[Worker] Job ${job.id} completed successfully.`);
   });
 
-  emailWorker.on('failed', (job, err) => {
+  emailWorker.on('failed', async (job, err) => {
     console.error(`[Worker] Job ${job?.id} failed:`, err.message);
+    if (job?.data?.emailId) {
+      const maxAttempts = job.opts?.attempts || DEFAULT_JOB_ATTEMPTS;
+      if (job.attemptsMade >= maxAttempts) {
+        try {
+          const exhaustionJson = JSON.stringify({
+            code: 'RETRY_EXHAUSTED',
+            message: `Terminal failure after ${job.attemptsMade} attempts: ${err.message}`,
+            transient: true,
+          });
+          await query(
+            `UPDATE emails
+             SET status = 'failed', last_error = $1, updated_at = NOW()
+             WHERE id = $2 AND status = 'scheduled'`,
+            [exhaustionJson, job.data.emailId],
+          );
+        } catch (dbErr) {
+          console.error(
+            `[Worker] Failed to record terminal failure fallback for email ${job.data.emailId}:`,
+            dbErr,
+          );
+        }
+      }
+    }
   });
 
   emailWorker.on('error', (err) => {

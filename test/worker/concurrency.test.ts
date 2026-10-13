@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { query, closePool } from '@reachinbox/db';
+import { query, closePool, getPool } from '@reachinbox/db';
 import { closeRedis, closeQueue, createEmailWorker } from '@reachinbox/redis';
+import { runStartupReconciliation } from '../../apps/worker/src/reconciler.js';
 import {
   DEFAULT_DEV_USER_ID,
   DEFAULT_DEV_SENDER_ID,
@@ -120,5 +121,31 @@ describe('Worker Concurrency & Atomic Claiming (BE-12, QA-05, RATE-01)', () => {
 
     expect(worker.opts.concurrency).toBe(7);
     worker.close();
+  });
+
+  it('reconciliation advisory lock enforces mutual exclusion across concurrent worker instances', async () => {
+    const pool = getPool();
+    const client = await pool.connect();
+    let lockAcquired = false;
+
+    try {
+      // Simulate another worker process currently holding the reconciliation advisory lock
+      const lockRes = await client.query<{ locked: boolean }>(
+        "SELECT pg_try_advisory_lock(hashtext('reachinbox_reconciliation')) AS locked",
+      );
+      expect(lockRes.rows[0].locked).toBe(true);
+      lockAcquired = true;
+
+      // Now run reconciliation from our worker: it must detect the lock and skip execution cleanly
+      const summary = await runStartupReconciliation({ maxLockRetries: 0 });
+      expect(summary.lockSkipped).toBe(true);
+      expect(summary.recoveredOutbox).toBe(0);
+      expect(summary.recoveredStaleProcessing).toBe(0);
+    } finally {
+      if (lockAcquired) {
+        await client.query("SELECT pg_advisory_unlock(hashtext('reachinbox_reconciliation'))");
+      }
+      client.release();
+    }
   });
 });

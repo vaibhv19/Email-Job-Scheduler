@@ -1,5 +1,5 @@
 import { query, withTransaction } from '@reachinbox/db';
-import type { Job } from '@reachinbox/redis';
+import { type Job, DEFAULT_JOB_ATTEMPTS } from '@reachinbox/redis';
 import * as mailer from './mailer.js';
 
 export interface EmailJobData {
@@ -202,8 +202,44 @@ export async function processEmailJob(job: Job<EmailJobData>): Promise<{
     transient: isTransient,
   });
 
+  const maxAttempts = job.opts?.attempts || DEFAULT_JOB_ATTEMPTS;
+  const attemptsMade = typeof job.attemptsMade === 'number' ? job.attemptsMade : 0;
+  const isFinalAttempt = attemptsMade + 1 >= maxAttempts;
+
   if (isTransient) {
-    // Transient failure: reset email to 'scheduled' and fail job for BullMQ retry
+    if (isFinalAttempt) {
+      // Terminal retry exhaustion: transition email to 'failed' to prevent infinite scheduled stranding
+      const exhaustionJson = JSON.stringify({
+        code: 'RETRY_EXHAUSTED',
+        message: `Maximum delivery attempts (${maxAttempts}) exhausted: ${sendResult.errorMessage}`,
+        transient: true,
+        lastErrorCode: sendResult.errorCode,
+        attemptsMade: job.attemptsMade + 1,
+      });
+
+      await withTransaction(async (client) => {
+        await client.query(
+          `UPDATE email_attempts
+           SET outcome = 'rejected', error_code = $1, error_message = $2, finished_at = NOW()
+           WHERE id = $3`,
+          [sendResult.errorCode, sendResult.errorMessage, attempt.id],
+        );
+
+        await client.query(
+          `UPDATE emails
+           SET status = 'failed', last_error = $1, updated_at = NOW()
+           WHERE id = $2`,
+          [exhaustionJson, email.id],
+        );
+      });
+
+      console.error(
+        `[Worker] Retry exhausted for email ${email.id} after ${job.attemptsMade + 1}/${maxAttempts} attempts: ${sendResult.errorMessage}`,
+      );
+      throw new Error(`Retry Exhausted: ${sendResult.errorMessage} (${sendResult.errorCode})`);
+    }
+
+    // Transient failure with retries remaining: reset email to 'scheduled' and fail job for BullMQ retry
     await withTransaction(async (client) => {
       await client.query(
         `UPDATE email_attempts
@@ -220,7 +256,9 @@ export async function processEmailJob(job: Job<EmailJobData>): Promise<{
       );
     });
 
-    console.warn(`[Worker] Transient error sending email ${email.id}: ${sendResult.errorMessage}`);
+    console.warn(
+      `[Worker] Transient error sending email ${email.id} (attempt ${attemptsMade + 1}/${maxAttempts}): ${sendResult.errorMessage}`,
+    );
     throw new Error(`Transient SMTP Error: ${sendResult.errorMessage} (${sendResult.errorCode})`);
   }
 

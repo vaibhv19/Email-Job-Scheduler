@@ -42,6 +42,7 @@ export async function handleIdempotency(
   }
 
   const currentHash = computePayloadHash(req);
+  (req as unknown as { idempotencyHash?: string }).idempotencyHash = currentHash;
 
   try {
     // 1. Check existing idempotency record

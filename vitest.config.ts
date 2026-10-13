@@ -6,5 +6,6 @@ export default defineConfig({
     environment: 'node',
     include: ['test/**/*.test.ts', 'packages/**/*.test.ts', 'apps/**/*.test.ts'],
     exclude: ['node_modules', 'dist'],
+    fileParallelism: false,
   },
 });

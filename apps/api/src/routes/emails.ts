@@ -31,8 +31,11 @@ emailRouter.post(
         ? rawKey.trim()
         : undefined;
 
+    const reqWithHash = req as unknown as { idempotencyHash?: string };
+    const idempotencyHash = reqWithHash.idempotencyHash;
+
     try {
-      const result = await scheduleEmails(req.user!.id, req.body, idempotencyKey);
+      const result = await scheduleEmails(req.user!.id, req.body, idempotencyKey, idempotencyHash);
       res.status(201).json(result);
     } catch (err: unknown) {
       const error = err as { code?: string; message?: string };
@@ -41,11 +44,25 @@ emailRouter.post(
         // Wait for winner to finish and retrieve stored response.
         for (let attempt = 0; attempt < 25; attempt++) {
           await new Promise((r) => setTimeout(r, 40));
-          const cached = await query<{ response_status: number; response_body: unknown }>(
-            `SELECT response_status, response_body FROM idempotency_records WHERE user_id = $1 AND idempotency_key = $2`,
+          const cached = await query<{
+            request_hash: string;
+            response_status: number;
+            response_body: unknown;
+          }>(
+            `SELECT request_hash, response_status, response_body FROM idempotency_records WHERE user_id = $1 AND idempotency_key = $2`,
             [req.user!.id, idempotencyKey],
           );
           if (cached.rows.length > 0) {
+            if (idempotencyHash && cached.rows[0].request_hash !== idempotencyHash) {
+              res.status(409).json({
+                error: {
+                  code: 'IDEMPOTENCY_CONFLICT',
+                  message: 'Idempotency key was previously used with a different request payload',
+                },
+              });
+              return;
+            }
+
             res.setHeader('Idempotency-Replayed', 'true');
             const cachedBody =
               typeof cached.rows[0].response_body === 'string'

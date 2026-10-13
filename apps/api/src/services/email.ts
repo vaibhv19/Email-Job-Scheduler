@@ -28,6 +28,7 @@ export async function scheduleEmails(
   userId: string,
   input: ScheduleEmailInput,
   idempotencyKey?: string,
+  requestHash?: string,
 ): Promise<ScheduleResult> {
   // 1. Validate that the sender exists and belongs to the user
   const senderRes = await query<{ id: string }>(
@@ -107,6 +108,21 @@ export async function scheduleEmails(
       );
 
       emailRows.push(email);
+    }
+
+    if (idempotencyKey && requestHash) {
+      const responseData = emailRows.length === 1 ? emailRows[0] : emailRows;
+      const responseBody = {
+        isBulk: recipients.length > 1,
+        scheduledCount: emailRows.length,
+        data: responseData,
+      };
+      await client.query(
+        `INSERT INTO idempotency_records (user_id, idempotency_key, request_hash, response_status, response_body)
+         VALUES ($1, $2, $3, 201, $4)
+         ON CONFLICT (user_id, idempotency_key) DO NOTHING;`,
+        [userId, idempotencyKey, requestHash, JSON.stringify(responseBody)],
+      );
     }
 
     return emailRows;

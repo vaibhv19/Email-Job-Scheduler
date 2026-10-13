@@ -18,6 +18,9 @@ export function getEmailQueue(): Queue {
   return globalEmailQueue;
 }
 
+export const DEFAULT_JOB_ATTEMPTS = 3;
+export const DEFAULT_BACKOFF_DELAY_MS = 2000;
+
 export interface EnqueueEmailJobParams {
   emailId: string;
   senderId: string;
@@ -25,6 +28,7 @@ export interface EnqueueEmailJobParams {
   recipientEmail: string;
   subject: string;
   scheduledAt: Date;
+  attempts?: number;
 }
 
 /**
@@ -35,10 +39,16 @@ export async function enqueueEmailJob(
 ): Promise<{ jobId: string; delay: number }> {
   const queue = getEmailQueue();
   const delay = Math.max(0, params.scheduledAt.getTime() - Date.now());
+  const attempts = params.attempts ?? DEFAULT_JOB_ATTEMPTS;
 
   const jobOpts: JobsOptions = {
     jobId: params.emailId, // Deterministic Job ID derived from email UUID
     delay,
+    attempts,
+    backoff: {
+      type: 'exponential',
+      delay: DEFAULT_BACKOFF_DELAY_MS,
+    },
     removeOnComplete: false,
     removeOnFail: false,
   };
@@ -73,6 +83,7 @@ export async function enqueueEmailJobsBatch(
 
   const bulkJobs = jobs.map((param) => {
     const delay = Math.max(0, param.scheduledAt.getTime() - now);
+    const attempts = param.attempts ?? DEFAULT_JOB_ATTEMPTS;
     return {
       name: 'send-email',
       data: {
@@ -86,6 +97,11 @@ export async function enqueueEmailJobsBatch(
       opts: {
         jobId: param.emailId, // Deterministic Job ID
         delay,
+        attempts,
+        backoff: {
+          type: 'exponential',
+          delay: DEFAULT_BACKOFF_DELAY_MS,
+        },
         removeOnComplete: false,
         removeOnFail: false,
       },
