@@ -1,8 +1,10 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { checkDatabaseHealth, closePool } from '@reachinbox/db';
-import { checkRedisHealth, closeRedis } from '@reachinbox/redis';
+import { checkRedisHealth, closeRedis, createEmailWorker, type Worker } from '@reachinbox/redis';
 import { RATE_LIMIT_DEFAULTS } from '@reachinbox/shared';
+import { processEmailJob } from './processor.js';
+import { runStartupReconciliation } from './reconciler.js';
 
 // Load environment from workspace root if not already set
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -25,40 +27,78 @@ console.log(`[Worker] Default sender delay: ${minSendIntervalMs}ms`);
 console.log(`[Worker] Default hourly quota: ${maxEmailsPerHour} emails/hr`);
 
 let isRunning = true;
+let emailWorker: Worker | null = null;
+let reconciliationInterval: NodeJS.Timeout | null = null;
 
 async function bootstrap() {
   const [dbHealthy, redisHealthy] = await Promise.all([checkDatabaseHealth(), checkRedisHealth()]);
 
   if (!dbHealthy) {
-    console.warn('[Worker] Warning: PostgreSQL is not reachable at startup.');
-  } else {
-    console.log('[Worker] Connected to PostgreSQL successfully.');
+    console.error('[Worker] Fatal: PostgreSQL is not reachable at startup.');
+    process.exit(1);
   }
+  console.log('[Worker] Connected to PostgreSQL successfully.');
 
   if (!redisHealthy) {
-    console.warn('[Worker] Warning: Redis is not reachable at startup.');
-  } else {
-    console.log('[Worker] Connected to Redis successfully.');
+    console.error('[Worker] Fatal: Redis is not reachable at startup.');
+    process.exit(1);
+  }
+  console.log('[Worker] Connected to Redis successfully.');
+
+  // 1. Run startup outbox and crash recovery (BE-09, QA-06)
+  try {
+    await runStartupReconciliation();
+  } catch (recErr) {
+    console.error('[Worker] Error during startup reconciliation:', recErr);
   }
 
-  console.log('[Worker] Worker process is active and idling for job processors (Phase 4).');
+  // 2. Initialize BullMQ Worker process with configured concurrency (RATE-01, BE-11)
+  emailWorker = createEmailWorker(processEmailJob, { concurrency });
 
-  // Keep event loop active
-  const heartbeat = setInterval(() => {
-    if (!isRunning) {
-      clearInterval(heartbeat);
+  emailWorker.on('completed', (job) => {
+    console.log(`[Worker] Job ${job.id} completed successfully.`);
+  });
+
+  emailWorker.on('failed', (job, err) => {
+    console.error(`[Worker] Job ${job?.id} failed:`, err.message);
+  });
+
+  emailWorker.on('error', (err) => {
+    console.error('[Worker] BullMQ worker error:', err);
+  });
+
+  console.log(`[Worker] BullMQ email worker started with concurrency = ${concurrency}.`);
+
+  // 3. Periodic background outbox reconciliation (BE-10)
+  reconciliationInterval = setInterval(async () => {
+    if (!isRunning) return;
+    try {
+      await runStartupReconciliation();
+    } catch (err) {
+      console.warn('[Worker] Periodic reconciliation error:', err);
     }
-  }, 10000);
+  }, 30000);
 }
 
 const handleShutdown = async (signal: string) => {
   if (!isRunning) return;
   isRunning = false;
   console.log(`[Worker] Received ${signal}, shutting down gracefully...`);
+
+  if (reconciliationInterval) {
+    clearInterval(reconciliationInterval);
+    reconciliationInterval = null;
+  }
+
   try {
+    if (emailWorker) {
+      console.log('[Worker] Closing BullMQ worker...');
+      await emailWorker.close();
+      emailWorker = null;
+    }
     await closePool();
     await closeRedis();
-    console.log('[Worker] Database and Redis connections closed.');
+    console.log('[Worker] Database and Redis connections closed cleanly.');
   } catch (err) {
     console.error('[Worker] Error during shutdown:', err);
   } finally {

@@ -1,6 +1,7 @@
-import { Queue, type JobsOptions } from 'bullmq';
-import { getRedisClient } from './index.js';
+import { Queue, Worker, type JobsOptions, type Job, type Processor } from 'bullmq';
+import { getRedisClient, createDedicatedRedisClient } from './index.js';
 
+export { Worker, Job, type Processor };
 export const EMAIL_QUEUE_NAME = 'emails';
 
 let globalEmailQueue: Queue | null = null;
@@ -103,4 +104,22 @@ export async function closeQueue(): Promise<void> {
     await globalEmailQueue.close();
     globalEmailQueue = null;
   }
+}
+
+export interface CreateWorkerOptions {
+  concurrency?: number;
+}
+
+/**
+ * Creates and initializes a BullMQ Worker instance for email job execution (BE-11, RATE-01)
+ */
+export function createEmailWorker(processor: Processor, options?: CreateWorkerOptions): Worker {
+  const prefix = process.env.BULLMQ_PREFIX || 'reachinbox';
+  const connection = createDedicatedRedisClient();
+
+  return new Worker(EMAIL_QUEUE_NAME, processor, {
+    connection,
+    concurrency: options?.concurrency || 5,
+    prefix,
+  });
 }

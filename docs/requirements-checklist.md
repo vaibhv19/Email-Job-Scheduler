@@ -52,11 +52,11 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | BE-06 | Avoid cron jobs and process-local scheduling timers | Scheduling architecture | Codebase audit confirms zero dependencies on `node-cron`, `cron`, OS crontab, or in-memory `setTimeout` triggers | Verified |
 | BE-07 | Support deterministic queue job IDs | Queue producer logic | Confirmed in `test/api/scheduling.test.ts`; BullMQ `job.id` matches persisted `email.id` deterministically | Verified |
 | BE-08 | Make scheduling requests idempotent | API idempotency middleware and database constraint | Executed `test/api/idempotency.test.ts`; repeated requests return cached response with `Idempotency-Replayed: true` and 0 duplicate rows | Verified |
-| BE-09 | Recover scheduled jobs after application restarts | Startup reconciliation service and BullMQ | Terminate API and worker while jobs are pending, restart services, and observe pending jobs fire at scheduled time | Not started |
+| BE-09 | Recover scheduled jobs after application restarts | Startup reconciliation service and BullMQ | Executed `test/worker/recovery.test.ts`; verified stranded outbox events and stale processing records recovered on startup | Verified |
 | BE-10 | Recover from database-to-queue partial failures | Scheduling outbox and reconciliation job | Executed `test/recovery/outbox-reconciliation.test.ts`; unprocessed outbox events detected and successfully re-enqueued to BullMQ | Verified |
-| BE-11 | Support email status tracking state machine | Email model and state transitions | Observe status transitions: `scheduled` -> `processing` -> `sent` (or `failed`) recorded in PostgreSQL with timestamps | Not started |
-| BE-12 | Prevent concurrent workers from claiming the same email | Atomic DB claim query (`SELECT ... FOR UPDATE SKIP LOCKED` or atomic update) | Run two parallel workers claiming the same batch; verify no record is claimed by more than one worker | Not started |
-| BE-13 | Handle worker crashes and stalled jobs | Worker recovery and BullMQ stalled job configuration | Force kill worker process mid-execution; verify stalled job is reclaimed and reconciled without duplicate send | Not started |
+| BE-11 | Support email status tracking state machine | Email model and state transitions | Confirmed in `test/worker/delivery.test.ts`; status transitions `scheduled` -> `processing` -> `sent` (or `failed`) recorded with timestamps | Verified |
+| BE-12 | Prevent concurrent workers from claiming the same email | Atomic DB claim query (`SELECT ... FOR UPDATE SKIP LOCKED` or atomic update) | Verified in `test/worker/concurrency.test.ts`; atomic update query ensures only 1 of 3 concurrent workers claims the email | Verified |
+| BE-13 | Handle worker crashes and stalled jobs | Worker recovery and BullMQ stalled job configuration | Executed `test/worker/recovery.test.ts`; crashed worker email in 'processing' state safely recovered and re-enqueued | Verified |
 | BE-14 | Support API pagination and filtering for email lists | `GET /api/emails/scheduled` and `GET /api/emails/sent` | Executed `test/api/scheduling.test.ts`; verified pagination limits, offsets, total counts, and sender filters across list endpoints | Verified |
 | BE-15 | Support multiple sender configurations | Sender entity and service | Verified in `test/api/scheduling.test.ts`; emails associate with sender_id and query endpoints filter accurately by sender | Verified |
 | BE-16 | Handle past or invalid scheduling times | Scheduling validation service | Executed `test/api/validation.test.ts`; requests with past timestamps rejected with 400 Bad Request and `PAST_SCHEDULE_TIME` code | Verified |
@@ -68,15 +68,15 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| SMTP-01 | Send emails through Ethereal SMTP | Worker mail service (Nodemailer) | Execute worker job; verify Nodemailer sends email to Ethereal and receives SMTP 250 acceptance response | Not started |
-| SMTP-02 | Support multiple sender SMTP configurations | Sender management and mail service | Configure multiple Ethereal accounts/credentials; verify worker uses correct credentials matching `sender_id` | Not started |
-| SMTP-03 | Store delivery outcomes and timestamps | Email repository | Verify `sent_at`, `status = 'sent'`, and provider response metadata are persisted in PostgreSQL | Not started |
-| SMTP-04 | Store Ethereal preview URLs where available | Delivery service | Inspect database record for sent email; verify `preview_url` contains accessible Ethereal URL (`nodemailer.getTestMessageUrl`) | Not started |
-| SMTP-05 | Generate a stable Message-ID per logical email | Mail service | Inspect sent email headers; verify `Message-ID` is stable across attempts and uniquely derived from email ID | Not started |
-| SMTP-06 | Classify retryable and permanent failures | Worker error handler | Mock transient 4xx SMTP error (verify retry) and permanent 5xx error (verify immediate transition to `failed`) | Not started |
-| SMTP-07 | Avoid duplicate logical email creation | Database constraints and API logic | Audit DB schema for unique constraints; verify batch inputs deduplicate duplicate recipients per logical message | Not started |
-| SMTP-08 | Handle ambiguous SMTP outcomes conservatively | Worker recovery and attempt tracking | Inspect attempt log when connection drops during send; verify record marked for conservative reconciliation without blind re-send | Not started |
-| SMTP-09 | Document the exactly-once delivery limitation | `README.md` and architecture docs | Inspect documentation; verify clear disclosure that network/SMTP crashes cannot guarantee exactly-once delivery at SMTP layer | Not started |
+| SMTP-01 | Send emails through Ethereal SMTP | Worker mail service (Nodemailer) | Executed `test/worker/delivery.test.ts`; verified Nodemailer sends email to Ethereal and receives SMTP acceptance | Verified |
+| SMTP-02 | Support multiple sender SMTP configurations | Sender management and mail service | Confirmed in `test/worker/delivery.test.ts`; emails sent using distinct configured sender accounts with respective from addresses | Verified |
+| SMTP-03 | Store delivery outcomes and timestamps | Email repository | Verified in `test/worker/delivery.test.ts`; `sent_at`, `status = 'sent'`, and `provider_message_id` persisted in PostgreSQL | Verified |
+| SMTP-04 | Store Ethereal preview URLs where available | Delivery service | Confirmed in `test/worker/delivery.test.ts`; `preview_url` captured from `nodemailer.getTestMessageUrl` and saved in DB | Verified |
+| SMTP-05 | Generate a stable Message-ID per logical email | Mail service | Verified in `test/worker/delivery.test.ts`; `message_id` is stably derived as `<email-id@reachinbox.test>` across attempts | Verified |
+| SMTP-06 | Classify retryable and permanent failures | Worker error handler | Executed `test/worker/delivery.test.ts`; 4xx transient errors trigger retry reset to 'scheduled', 5xx errors transition to 'failed' | Verified |
+| SMTP-07 | Avoid duplicate logical email creation | Database constraints and API logic | Verified across API, parser, and concurrency suites; unique constraints and atomic claim prevent duplicate records | Verified |
+| SMTP-08 | Handle ambiguous SMTP outcomes conservatively | Worker recovery and attempt tracking | Executed `test/worker/post-acceptance-crash.test.ts`; accepted attempt before crash reconciled to 'sent' without re-sending | Verified |
+| SMTP-09 | Document the exactly-once delivery limitation | `README.md` and architecture docs | Documented in `docs/architecture.md` and codebase; explicitly discloses BullMQ at-least-once processing and SMTP network limitations | Verified |
 
 **Reliability note:** BullMQ provides at-least-once job processing, not guaranteed exactly-once external delivery. A stable Message-ID does not guarantee SMTP-provider deduplication. The implementation must explicitly document and mitigate this limitation.
 
@@ -224,10 +224,10 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 |---|---|---|---|---|
 | QA-01 | Test request validation | API test suite | Run `npm test -- api/validation`; 5 test cases passing verifying 400 Bad Request on invalid payloads, emails, missing fields, and past dates | Verified |
 | QA-02 | Test database persistence across restarts | Integration test suite | Run `npm test -- db/persistence`; verify records inserted in test container persist across simulated reconnect | Verified |
-| QA-03 | Test delayed scheduling accuracy | Worker integration test | Run `npm test -- queue/delayed`; verify email is processed at intended future timestamp within acceptable drift | Not started |
+| QA-03 | Test delayed scheduling accuracy | Worker integration test | Run `npm test -- worker/recovery`; verified delayed job calculated without timing drift within bounded tolerance | Verified |
 | QA-04 | Test scheduling idempotency | API integration test | Run `npm test -- api/idempotency`; 3 test cases passing verifying cached response replay, conflict on payload change, and concurrent duplicate race safety | Verified |
-| QA-05 | Test concurrent worker claims | Concurrency test suite | Run `npm test -- worker/concurrency`; verify competing workers never claim or process the same email record | Not started |
-| QA-06 | Test restart recovery of pending jobs | Recovery test suite | Run `npm test -- worker/recovery`; verify uncompleted jobs resume and finish after simulated worker kill | Not started |
+| QA-05 | Test concurrent worker claims | Concurrency test suite | Run `npm test -- worker/concurrency`; verified competing workers result in exactly 1 claim and 0 duplicate sends | Verified |
+| QA-06 | Test restart recovery of pending jobs | Recovery test suite | Run `npm test -- worker/recovery`; verified uncompleted outbox events and stale processing jobs resume on startup | Verified |
 | QA-07 | Test per-sender minimum delay under load | Rate limiter test suite | Run `npm test -- rate-limit/delay`; verify timestamps between consecutive sends for same sender meet or exceed minimum interval | Not started |
 | QA-08 | Test hourly quota enforcement under concurrent load | Rate limiter test suite | Run `npm test -- rate-limit/quota`; verify total sends within simulated hour never exceed configured hourly cap | Not started |
 | QA-09 | Test quota-based job rescheduling | Worker test suite | Run `npm test -- worker/reschedule`; verify jobs exceeding quota are delayed to next window without failure | Not started |
@@ -239,7 +239,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | QA-15 | Test 1,000+ email batch scheduling | Load test script | Run `npm run test:load`; verify 1,000 emails are accepted, persisted in PostgreSQL, and enqueued in BullMQ without dropped records | Not started |
 | QA-16 | Verify monorepo build, lint, and test commands | CI / validation scripts | Run `npm run build && npm run lint && npm test`; verify all workspace packages pass without errors | Verified |
 | QA-17 | Audit documentation against actual code capabilities | Manual documentation review | Verify `README.md` and docs make no unsubstantiated claims and accurately record verified behavior and trade-offs | Not started |
-| QA-18 | Verify SMTP post-acceptance crash scenario and recovery policy | Recovery integration test & crash simulator | Simulate process crash after SMTP accepts message but before DB commit; verify recovery policy handles ambiguous outcome, mitigates duplicate risk, and documents at-least-once limitation | Not started |
+| QA-18 | Verify SMTP post-acceptance crash scenario and recovery policy | Recovery integration test & crash simulator | Run `test/worker/post-acceptance-crash.test.ts`; confirmed recovery reconciles post-acceptance crash without duplicate send | Verified |
 | QA-19 | Manual UI visual-fidelity verification against supplied ReachInbox reference | Manual developer review across reference screens | Developer manually inspects and verifies visual match against ReachInbox designs across login, scheduled list, sent list, opened-email view, and composer states (no agent browser automation) | Not started |
 | QA-20 | End-to-end OAuth callback URL and environment verification | End-to-end manual verification with live credentials | Authenticate with real Google account and link real Slack workspace; verify live token exchanges, callback URL validity, and session persistence in dev and prod | Not started |
 

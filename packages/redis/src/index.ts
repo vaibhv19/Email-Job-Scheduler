@@ -54,6 +54,15 @@ export function getRedisClient(overrideOptions?: RedisOptions): Redis {
   return globalRedis;
 }
 
+export function createDedicatedRedisClient(): Redis {
+  const { url, options } = resolveRedisOptions();
+  const client = url ? new Redis(url, options) : new Redis(options);
+  client.on('error', (err) => {
+    console.error('Dedicated Redis connection error:', err);
+  });
+  return client;
+}
+
 export async function closeRedis(): Promise<void> {
   if (globalRedis) {
     await globalRedis.quit();
