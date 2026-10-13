@@ -4,6 +4,12 @@
     "composite": true,
     "noEmit": true
   },
-  "include": ["vitest.config.ts", "packages/**/*", "test/**/*"],
+  "include": [
+    "vitest.config.ts",
+    "packages/**/*",
+    "apps/api/**/*",
+    "apps/worker/**/*",
+    "test/**/*"
+  ],
   "exclude": ["node_modules", "dist"]
 }

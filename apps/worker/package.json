@@ -1,0 +1,19 @@
+{
+  "name": "@reachinbox/worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "dependencies": {
+    "@reachinbox/db": "*",
+    "@reachinbox/redis": "*",
+    "@reachinbox/shared": "*",
+    "dotenv": "^16.4.7"
+  }
+}

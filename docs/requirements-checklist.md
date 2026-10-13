@@ -25,16 +25,16 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 |---|---|---|---|---|
 | INF-01 | Create a private GitHub repository | Repository settings | Repository visibility confirmed as Private in GitHub repository settings | Verified|
 | INF-02 | Set up a TypeScript monorepo | Root workspace (`package.json`, workspace config) | Run monorepo build command (`npm run build`); API, worker, and web compile cleanly | Verified |
-| INF-03 | Configure Express.js backend | `apps/api` | Run `npm run dev --filter api`; API starts and `curl http://localhost:3001/health` returns 200 OK | Not started |
-| INF-04 | Configure React frontend with TypeScript and Tailwind CSS | `apps/web` | Run `npm run build --filter web`; frontend compiles without errors and UI renders in browser | Not started |
-| INF-05 | Configure PostgreSQL with migrations | Database schema and migration tooling | Run migration script (`npm run db:migrate`); tables are created and confirmed via database query | Not started |
-| INF-06 | Configure Redis | Infrastructure configuration | Run `redis-cli ping`; responds with `PONG`; BullMQ establishes connection without error | Not started |
-| INF-07 | Configure Elasticsearch | Search infrastructure | Run `curl http://localhost:9200/_cluster/health`; cluster responds green/yellow and index is created | Not started |
-| INF-08 | Configure Docker Compose for local development | `infra/docker-compose.yml` | Run `docker compose -f infra/docker-compose.yml up -d`; PostgreSQL, Redis, and Elasticsearch containers start and pass healthchecks | Not started |
-| INF-09 | Persist PostgreSQL and Redis data across restarts | Docker volume definitions and Redis persistence config | Restart containers (`docker compose down && docker compose up -d`); verify stored tables and Redis keys persist | Not started |
+| INF-03 | Configure Express.js backend | `apps/api` | Run `npm run dev --filter api`; API starts and `curl http://localhost:3001/health` returns 200 OK | Verified |
+| INF-04 | Configure React frontend with TypeScript and Tailwind CSS | `apps/web` | Run `npm run build --filter web`; frontend compiles without errors and UI renders in browser | Verified |
+| INF-05 | Configure PostgreSQL with migrations | Database schema and migration tooling | Run migration script (`npm run db:migrate`); tables are created and confirmed via database query | Verified |
+| INF-06 | Configure Redis | Infrastructure configuration | Run `redis-cli ping`; responds with `PONG`; BullMQ establishes connection without error | Verified |
+| INF-07 | Configure Elasticsearch | Search infrastructure | Run `curl http://localhost:9200/_cluster/health`; cluster responds green/yellow and index is created | Verified |
+| INF-08 | Configure Docker Compose for local development | `infra/docker-compose.yml` | Run `docker compose -f infra/docker-compose.yml up -d`; PostgreSQL, Redis, and Elasticsearch containers start and pass healthchecks | Verified |
+| INF-09 | Persist PostgreSQL and Redis data across restarts | Docker volume definitions and Redis persistence config | Restart containers (`docker compose down && docker compose up -d`); verify stored tables and Redis keys persist | Verified |
 | INF-10 | Provide environment variable templates | `.env.example` in root and applications | Inspect `.env.example`; verify all required configuration keys are documented with safe placeholder values | Verified |
-| INF-11 | Separate API and worker into independent processes | `apps/api` and `apps/worker` | Launch API and worker in separate processes; verify each process starts, operates, and terminates independently | Not started |
-| INF-12 | Configure health and readiness checks | API endpoints (`/health`, `/ready`) | Query `GET /health` (liveness) and `GET /ready` (readiness with DB/Redis/ES checks); verify accurate 200/503 responses | Not started |
+| INF-11 | Separate API and worker into independent processes | `apps/api` and `apps/worker` | Launch API and worker in separate processes; verify each process starts, operates, and terminates independently | Verified |
+| INF-12 | Configure health and readiness checks | API endpoints (`/health`, `/ready`) | Query `GET /health` (liveness) and `GET /ready` (readiness with DB/Redis/ES checks); verify accurate 200/503 responses | Verified |
 | INF-13 | Configure TypeScript, linting, formatting, and test runners | Workspace configuration (`tsconfig.json`, ESLint, Prettier, test runner) | Run `npm run lint`, `npm run typecheck`, and `npm test`; all commands complete with zero errors | Verified |
 | INF-14 | Prevent secrets from entering source control | `.gitignore` and git history | Run `git status --ignored` and check commit history; verify `.env`, secret files, and credentials are excluded | Verified |
 
@@ -223,7 +223,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
 | QA-01 | Test request validation | API test suite | Run `npm test -- api/validation`; verify invalid payloads return 400 with expected error details | Not started |
-| QA-02 | Test database persistence across restarts | Integration test suite | Run `npm test -- db/persistence`; verify records inserted in test container persist across simulated reconnect | Not started |
+| QA-02 | Test database persistence across restarts | Integration test suite | Run `npm test -- db/persistence`; verify records inserted in test container persist across simulated reconnect | Verified |
 | QA-03 | Test delayed scheduling accuracy | Worker integration test | Run `npm test -- queue/delayed`; verify email is processed at intended future timestamp within acceptable drift | Not started |
 | QA-04 | Test scheduling idempotency | API integration test | Run `npm test -- api/idempotency`; verify duplicate requests with same idempotency key return identical response | Not started |
 | QA-05 | Test concurrent worker claims | Concurrency test suite | Run `npm test -- worker/concurrency`; verify competing workers never claim or process the same email record | Not started |
@@ -237,7 +237,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | QA-13 | Test Elasticsearch indexing and recovery | Search integration test suite | Run `npm test -- search/indexing`; verify indexing on create, update on send, and sync recovery after outage | Not started |
 | QA-14 | Test cross-user authorization and data isolation | Security test suite | Run `npm test -- auth/isolation`; verify User A cannot view, schedule, or modify User B's emails | Not started |
 | QA-15 | Test 1,000+ email batch scheduling | Load test script | Run `npm run test:load`; verify 1,000 emails are accepted, persisted in PostgreSQL, and enqueued in BullMQ without dropped records | Not started |
-| QA-16 | Verify monorepo build, lint, and test commands | CI / validation scripts | Run `npm run build && npm run lint && npm test`; verify all workspace packages pass without errors | Not started |
+| QA-16 | Verify monorepo build, lint, and test commands | CI / validation scripts | Run `npm run build && npm run lint && npm test`; verify all workspace packages pass without errors | Verified |
 | QA-17 | Audit documentation against actual code capabilities | Manual documentation review | Verify `README.md` and docs make no unsubstantiated claims and accurately record verified behavior and trade-offs | Not started |
 | QA-18 | Verify SMTP post-acceptance crash scenario and recovery policy | Recovery integration test & crash simulator | Simulate process crash after SMTP accepts message but before DB commit; verify recovery policy handles ambiguous outcome, mitigates duplicate risk, and documents at-least-once limitation | Not started |
 | QA-19 | Manual UI visual-fidelity verification against supplied ReachInbox reference | Manual developer review across reference screens | Developer manually inspects and verifies visual match against ReachInbox designs across login, scheduled list, sent list, opened-email view, and composer states (no agent browser automation) | Not started |
