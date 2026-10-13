@@ -268,9 +268,3 @@ The assignment is ready for submission only when:
 - [ ] Repository permissions and hosted links are verified.
 - [ ] The demo video is recorded, accessible, and no longer than five minutes.
 - [ ] The assignment submission form is completed.
-
----
-
-**Maintenance rule:** Update the implementation area, verification evidence, and status as each requirement is completed. If a requirement is blocked, record the blocker and its impact rather than marking it complete.
-
-This checklist is the requirements source of truth. The architecture document, implementation roadmap, and testing strategy should reference these IDs instead of duplicating or redefining the requirements.
