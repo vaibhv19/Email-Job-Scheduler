@@ -6,18 +6,69 @@
 
 ---
 
-## 1. Objective and Execution Rules
+## 1. Objective and AntiGravity Execution Protocol
 
 ### 1.1 Objective
 Deliver a production-grade, full-stack email job scheduler adhering strictly to the ReachInbox assignment specification. The system provides reliable scheduling, persistent delayed execution via BullMQ, distributed per-sender rate limiting (delay and hourly quota), Ethereal SMTP delivery, real Google and Slack OAuth integrations, Elasticsearch search, operational queue visibility via Bull Board, and a ReachInbox-styled React interface.
 
-### 1.2 Execution Rules
-1. **Source of Truth:** `docs/requirements-checklist.md` governs all requirements. The roadmap references its stable IDs (e.g., `BE-01`, `RATE-05`, `SUB-02`) rather than redefining requirements.
-2. **Strict Verification Policy:** A checklist requirement is marked `Verified` only when implemented code exists and tangible, successful verification evidence (executed test, CLI command output, or documented manual observation) has passed. Never mark `Verified` based on a plan, generated unverified code, or an AI agent's unsupported assertion.
-3. **One Phase at a Time:** Implement, test, and verify strictly one phase before beginning the next.
-4. **Verification Gates:** Do not proceed past a phase's exit gate while critical failures or unresolved dependencies remain.
-5. **Scoped Modifications:** Modify only files relevant to the active phase. Do not introduce unapproved architectural changes or modify unrelated code.
-6. **No Automated UI Agent Testing:** All UI visual-fidelity and interactive dashboard reviews will be conducted manually by the developer without launching automated browser agents.
+### 1.2 AntiGravity Execution Protocol (Enforceable for Every Phase)
+
+Every phase of this roadmap must be executed strictly following the six mandatory stages below. An AI agent or developer must not bypass or reorder these stages:
+
+#### Stage 1: Pre-Phase Planning
+Before modifying or creating any files:
+1. **Read Specifications:** Read the active phase description, prerequisites, concrete deliverables, checklist requirement IDs, verification commands, exit criteria, and documented blockers.
+2. **Inspect Git Context:** Inspect `git status`, current branch, and recent commit history (`git log -n 5`).
+3. **Preserve User Work:** Record any unrelated or pre-existing modifications in the working tree and preserve them. Never discard, overwrite, or stash user work without explicit instruction.
+4. **Validate Scope & Prerequisites:** Identify the permitted file modification scope for the phase. Verify that all prerequisite deliverables from preceding phases exist and pass their exit criteria.
+5. **Blocker Protocol:** If any dependency is missing or an architectural conflict blocks safe implementation, **STOP immediately and report it** to the developer before writing code.
+
+#### Stage 2: Git Branch Isolation
+Every phase must execute in isolated feature branches:
+1. **Branch Baseline:** Start from an up-to-date, verified `main` branch state, subject to preserving legitimate existing uncommitted work.
+2. **Standardized Branch Naming:** Create and switch to a dedicated phase branch named consistently:
+   - Phase 1: `phase-01/foundation`
+   - Phase 2: `phase-02/infra-db`
+   - Phase 3: `phase-03/scheduling-api`
+   - Phase 4: `phase-04/worker-smtp`
+   - Phase 5: `phase-05/concurrency-ratelimits`
+   - Phase 6: `phase-06/google-auth`
+   - Phase 7: `phase-07/elasticsearch-search`
+   - Phase 8: `phase-08/frontend-dashboard`
+   - Phase 9: `phase-09/slack-bullboard`
+   - Phase 10: `phase-10/deployment-submission`
+3. **No Direct Commits on Main:** Never perform phase implementation directly on `main`.
+4. **Preserve Unrelated Changes:** Never discard, reset, or overwrite unrelated user work. Do not stage or commit unrelated changes.
+5. **Safe Transition Check:** If the repository state prevents a safe branch transition (e.g., untracked files conflict), report the exact state and stop rather than forcing a checkout, stash, or hard reset.
+
+#### Stage 3: Atomic Implementation
+During the implementation of an authorized phase:
+1. **Authorized Scope Only:** Implement strictly the deliverables belonging to the active phase. Do not begin later-phase functionality or implement speculative abstractions.
+2. **Architectural Fidelity:** Follow `docs/architecture.md` and `docs/requirements-checklist.md` as the authoritative source of truth. Do not make unapproved architectural changes.
+3. **Minimal Modifications:** Change only the files strictly required for that phase.
+4. **Documentation Sync:** Update only relevant documentation and requirements checklist entries corresponding to the phase deliverables.
+5. **No Automated Browser UI Agents:** All UI visual-fidelity and interactive dashboard reviews will be conducted manually by the developer without launching automated browser agents.
+
+#### Stage 4: Verification Gate
+After implementation completes:
+1. **Execute Concrete Verification Commands:** Run the actual CLI commands relevant to the phase's acceptance criteria, including monorepo build, TypeScript typecheck, ESLint, automated test suites (unit, API, queue, rate-limit, recovery), database migrations, and health checks.
+2. **Inspect Exit Codes & Output:** Inspect the exact exit codes and full command output. Tests pass only when exiting with code 0.
+3. **Distinguish Executed vs. Proposed Checks:** Clearly distinguish commands that actually executed in the environment from proposed commands that are not yet configured or available.
+4. **Diff & Security Review:** Review changed files and the complete git diff (`git diff`) for scope violations, hardcoded secrets, unintended file modifications, or architectural divergence.
+5. **Criteria Mapping:** Map every single phase acceptance criterion to `PASS`, `FAIL`, `BLOCKED`, or `NOT TESTED`, supported by tangible command output or documented manual observation.
+6. **Strict Checklist Verification Rule:** Update matching requirement IDs in `docs/requirements-checklist.md` to `Verified` only when tangible, passing evidence exists. Items without passing evidence must remain `In progress` or `Blocked`. Never mark `Verified` based on an assertion or unexecuted code.
+7. **Gate Failure Protocol:** If any critical criterion fails or remains blocked, **DO NOT MERGE** and **DO NOT PROCEED** to the next phase. Report the failure and stop for review.
+
+#### Stage 5: Review and Commit
+Once verification succeeds:
+1. **Engineering Review:** Produce a concise review evaluating design decisions, security posture, operational trade-offs, and remaining limitations.
+2. **Diff Inspection:** Inspect the staged diff (`git diff --cached`) immediately before committing to guarantee zero stray files or secrets.
+3. **Atomic Commit:** Commit only the verified changes belonging to the active phase, using clear conventional commit messages.
+4. **Report Commit Metadata:** Record and report the commit hash and branch name.
+5. **Developer Merge Gate:** Merge into `main` only after the verification gate passes and the developer has reviewed and approved the phase. Never claim that a commit, push, or merge occurred unless verified by git command output. If developer approval is required, stop and wait before merging.
+
+#### Stage 6: Mandatory Phase Handoff
+Every phase must conclude with a standardized handoff report before any subsequent work begins. See Section 10 for the exact 12-point handoff schema and required terminal decisions.
 
 ---
 
@@ -423,19 +474,33 @@ To ensure feasibility within the 48-hour timeline, planned work is targeted for 
 
 ---
 
-## 10. Progress Tracking and Reporting Rules
+## 10. Mandatory Phase Handoff Protocol
 
-When executing each phase with an AI agent or developer:
-1. **Declare Phase Focus:** Announce the target Phase and its requirement IDs before writing code.
-2. **Execute Deliverables:** Implement only the components specified in that Phase.
-3. **Execute Verification:** Run the defined test commands and inspect results.
-4. **Produce Phase Completion Report:**
-   - Changed files.
-   - Verification commands executed with actual pass/fail output.
-   - Checklist status updates (moving matching IDs from `Not started` to `Verified` only with proof).
-   - Any blockers or deferred trade-offs encountered.
-   - Confirmation of remaining deadline time.
-5. **No Phase Overlap:** Do not begin Phase *N+1* until Phase *N* exit criteria are fully satisfied.
+Every phase execution must terminate with a structured handoff report containing exactly these 12 sections:
+
+1. **Phase Identification:** Phase number, name, and checklist requirement IDs addressed.
+2. **File Inventory:** Complete list of changed, added, and deleted files.
+3. **Acceptance Criteria Results:** Explicit table mapping each phase acceptance criterion to `PASS`, `FAIL`, `BLOCKED`, or `NOT TESTED` with supporting evidence.
+4. **Commands Executed & Exit Codes:** Exact commands run in the environment, actual exit codes, and meaningful test output snippets.
+5. **Verifications Performed:** Database migrations, API checks, integration checks, and failure scenarios actually verified.
+6. **Diff Review & Architectural Assessment:** Analysis of the staged diff against architectural invariants, security rules, and file scope boundaries.
+7. **Checklist Status Updates:** Concrete changes to `docs/requirements-checklist.md` (only moving to `Verified` with verified evidence).
+8. **Known Limitations & Deferred Work:** Documented edge cases, trade-offs, or items deferred to later phases.
+9. **Documentation Updated:** List of documentation files created or modified during the phase.
+10. **Git State & Metadata:** Branch name, commit hash, and merge status (or pending review status).
+11. **Time Tracking:** Time spent in the active phase and remaining contingency budget against the 48-hour deadline.
+12. **Next Phase Prerequisites:** Exact starting point, dependencies, and requirements for the subsequent phase.
+
+### Terminal Gate Decisions:
+The handoff report must conclude with exactly one of the following three decisions:
+
+- **`READY FOR DEVELOPER REVIEW`** — All deliverables implemented, all verification commands passed (exit code 0), git diff verified clean, ready for human review before merge.
+- **`BLOCKED — ACTION REQUIRED`** — External dependency missing, architectural conflict detected, or credentials needed. Work is paused pending developer intervention.
+- **`VERIFICATION FAILED — DO NOT MERGE`** — One or more acceptance criteria, builds, or tests failed. Branch must not be merged to `main`.
+
+> [!CAUTION]
+> **Strict Execution Stop Rule:**
+> An AI agent or automated executor must **NEVER** automatically begin the next phase after producing the handoff report. It must stop and await the developer's explicit review and approval.
 
 ---
 

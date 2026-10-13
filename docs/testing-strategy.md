@@ -13,7 +13,7 @@
 3. **Automated vs. Manual Separation:** Automated unit, integration, and load tests must run headless via CLI commands. Manual verification is strictly reserved for live external OAuth handshakes, visual UI fidelity checks, and submission forms.
 4. **No Automated Browser Agents for UI:** In accordance with project instructions, all frontend visual-fidelity reviews against the supplied ReachInbox reference screens will be performed manually by the developer without launching automated browser agents.
 5. **Zero Dependency on Production Secrets:** Automated CI/local test suites must never require live third-party production credentials. External integrations (Ethereal SMTP, Google OAuth, Slack API) must use test fixtures, sandbox credentials, or isolated test harnesses during automated testing. Mock OAuth callbacks in unit/API tests; verify real OAuth flows during development and production gates.
-6. **Strict Test Isolation:** Tests must never alter, flush, or truncate development or production data. Automated tests connect to dedicated test databases and reserved Redis database indices, using targeted teardown rather than global flush commands.
+6. **Strict Test Isolation:** Tests must never alter, flush, or truncate development or production data. Automated tests connect to dedicated test databases and reserved, disposable Redis targets. Teardown must rely on targeted key deletion rather than destructive database-wide cleanup like `FLUSHALL` or `FLUSHDB`.
 7. **Honest Reporting:** Tests must be reported as passing only when executed with exit code 0. Failures, race conditions, or unverified scenarios must be documented as `Blocked` or `In progress` rather than hidden.
 8. **Performance Targets as Goals:** Runtime performance targets (e.g., unit tests finishing in under 2 seconds) are ergonomic developer targets, not hard correctness requirements, unless specifically mandated by assignment SLAs.
 9. **Delivery Guarantees Integrity:** BullMQ processing provides at-least-once delivery; tests must never claim or assume impossible exactly-once SMTP delivery. Stable Message-IDs aid traceability but do not guarantee provider deduplication. PostgreSQL remains the authoritative source of truth.
@@ -435,33 +435,53 @@ The test suite must explicitly cover the following high-risk scenarios:
 
 > [!CAUTION]
 > **Destructive Cleanup Safety Preconditions:**
-> Automated test suites must NEVER execute `FLUSHDB`, `FLUSHALL`, or destructive database truncation against shared instances that might contain development or production data.
+> Automated test suites must NEVER execute `FLUSHALL`, `FLUSHDB`, or destructive database truncation against shared instances that might contain development or production data.
 
-1. **Redis Isolation Safeguards:**
-   - Automated tests must connect to a **dedicated test Redis instance** or an **explicitly reserved Redis database index** (e.g., `REDIS_DB=15` with connection URL `redis://localhost:6379/15` defined in test environment configuration).
-   - **Queue Prefix Limitation:** A queue prefix alone (e.g., `{test}:emails`) does **not** protect against database-wide flush commands. Calling `FLUSHDB` on database 0 would destroy development BullMQ jobs and cached sessions regardless of queue prefix.
-   - **Targeted Teardown:** Test teardowns must use **targeted key deletion** matching test prefixes (e.g., deleting keys matching `{test}:*` or `reachinbox_test:*`) rather than global database flushes.
-   - **Mandatory Precondition Assertion:** If a test harness executes `FLUSHDB`, it must enforce strict runtime assertions first:
+1. **Redis Isolation and Cleanup Safeguards:**
+   - **Targeted Teardown Preferred:** Normal test teardown must use **targeted key deletion** of test-owned keys and namespaced data (e.g., deleting keys matching `{test}:*` or `reachinbox_test:*`) rather than database-wide cleanup. Never use `FLUSHALL`.
+   - **No Routine FLUSHDB:** Do not use `FLUSHDB` as the normal test-cleanup mechanism.
+   - **Queue Prefix Limitation:** A queue prefix alone (e.g., `{test}:emails`) namespaces keys within a database but does **not** protect against database-wide commands; running `FLUSHDB` wipes the entire database index regardless of prefix.
+   - **Configuration Precedence & Effective Target Verification:** Because `REDIS_URL` takes precedence over individual parameters (`REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`), the test harness must **never infer the effective Redis database solely from `REDIS_DB`**. If destructive database-wide cleanup is genuinely necessary for an isolated suite reset, the test harness must first resolve the **effective connected Redis target** (parsing `REDIS_URL` or evaluating client connection options to verify the actual resolved host, port, and database index, e.g., verifying database index 15 on an isolated test instance) and confirm that the instance and database are dedicated and disposable for testing:
      ```typescript
-     // Mandatory precondition assertion before any Redis flush
-     if (process.env.NODE_ENV !== 'test' || Number(process.env.REDIS_DB) !== 15) {
-       throw new Error('Refusing to flush Redis: Not connected to isolated test database (REDIS_DB=15)');
+     // Planned precondition assertion: verify effective connected Redis target
+     // Resolve effective database index accounting for REDIS_URL precedence
+     const effectiveDb = resolveEffectiveRedisDb({
+       redisUrl: process.env.REDIS_URL,
+       redisDb: process.env.REDIS_DB,
+     });
+     const effectiveHost = resolveEffectiveRedisHost(process.env.REDIS_URL, process.env.REDIS_HOST);
+
+     if (
+       process.env.NODE_ENV !== 'test' ||
+       effectiveDb !== 15 ||
+       !isTestHost(effectiveHost)
+     ) {
+       throw new Error(
+         `Refusing destructive Redis cleanup: Effective target (${effectiveHost}, db=${effectiveDb}) is not verified as a dedicated disposable test database.`
+       );
      }
      ```
-   - *Current Repository Status:* Dedicated test Redis isolation (`REDIS_DB=15`) is **planned to be established during Phase 2** when Docker Compose test profiles and test environment files are provisioned. It is not yet active in the repository.
+   - *Current Repository Status (Planned vs. Implemented):* These runtime verification functions and dedicated Redis test infrastructure (`REDIS_DB=15` or a disposable test container) are **planned for implementation in Phase 2**. They are not yet implemented or active in the repository; no runtime validation has been executed yet.
 
-2. **PostgreSQL Isolation Safeguards:**
-   - Automated tests must connect to a **dedicated test database** (e.g., `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/reachinbox_test`), never the development database (`reachinbox_scheduler`) or a production database.
-   - Automated tests must never truncate or reset a database that might contain development or production data.
-   - **Mandatory Precondition Assertion:** Test harnesses must assert that `process.env.NODE_ENV === 'test'` and the connected database name ends with `_test` before performing table truncations or schema resets:
+2. **PostgreSQL Isolation and Cleanup Safeguards:**
+   - **Effective Target Verification:** Automated tests must verify their **effective database target** before any destructive setup or teardown (such as schema migrations, test table truncation, or reset). Tests must connect to a dedicated test database (e.g., `reachinbox_test`), never the development database (`reachinbox_scheduler`) or a production database.
+   - **No Truncation of Dev/Prod Data:** Automated tests must never truncate, reset, or drop development or production data.
+   - **Mandatory Target Assertion:** Test harnesses must parse the effective database connection string (accounting for `DATABASE_URL` taking precedence over `DB_NAME`) and assert that `process.env.NODE_ENV === 'test'` and the effective target database name explicitly ends with `_test`:
      ```typescript
-     // Mandatory precondition assertion before any database reset or truncation
-     if (process.env.NODE_ENV !== 'test' || !dbConfig.database.endsWith('_test')) {
-       throw new Error('Refusing to truncate database: Not connected to an isolated test database (*_test)');
+     // Planned precondition assertion: verify effective connected PostgreSQL target
+     const effectiveDbName = resolveEffectivePostgresDb({
+       databaseUrl: process.env.DATABASE_URL,
+       dbName: process.env.DB_NAME,
+     });
+
+     if (process.env.NODE_ENV !== 'test' || !effectiveDbName.endsWith('_test')) {
+       throw new Error(
+         `Refusing destructive database reset: Effective target database (${effectiveDbName}) is not an isolated test database (*_test).`
+       );
      }
      ```
-   - **Transactional Rollbacks:** Individual integration tests should prefer wrapping operations in transactions and executing rollbacks (`BEGIN ... ROLLBACK`) where possible to prevent state leakage and avoid truncation overhead.
-   - *Current Repository Status:* Dedicated test database creation (`reachinbox_test`) and test migration scripts are **planned for Phase 2**.
+   - **Transactional Rollbacks:** Individual integration tests should wrap operations in transactions and execute rollbacks (`BEGIN ... ROLLBACK`) wherever practical to avoid table truncation overhead and eliminate inter-test state leakage.
+   - *Current Repository Status (Planned vs. Implemented):* Dedicated test database provisioning (`reachinbox_test`), test migration harnesses, and runtime target verification checks are **planned for Phase 2**. They are not yet implemented or active.
 
 3. **Elasticsearch Isolation Safeguards:**
    - Indexing integration tests must target a dedicated test index (e.g., `emails_test`), asserting `process.env.NODE_ENV === 'test'` before creating or deleting test indices.
