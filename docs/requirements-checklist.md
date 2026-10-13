@@ -44,23 +44,23 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| BE-01 | Accept email scheduling requests | `POST /api/emails/schedule` | Execute `POST /api/emails/schedule` with valid payload; receive 201 Created with email and job IDs | Not started |
-| BE-02 | Persist email records in a relational database | Email repository and PostgreSQL schema | Query `emails` table in PostgreSQL after scheduling; records exist with correct timestamps, recipients, and status | Not started |
-| BE-03 | Support single and bulk recipients in a scheduling request | Scheduling service | Send payload containing multiple recipient email addresses; verify individual logical email records are created per recipient | Not started |
-| BE-04 | Validate recipient email addresses, subject, body, and schedule time | API validation middleware (Zod / Joi) | Send requests with invalid emails, missing subject/body, and past dates; verify HTTP 400 Bad Request with field-level errors | Not started |
-| BE-05 | Use BullMQ delayed jobs backed by Redis for scheduling | Queue and scheduling service | Inspect Redis delayed job zset via BullMQ API or Bull Board; verify job delay matches `scheduled_at - now` | Not started |
-| BE-06 | Avoid cron jobs and process-local scheduling timers | Scheduling architecture | Codebase audit confirms zero dependencies on `node-cron`, `cron`, OS crontab, or in-memory `setTimeout` timers for job triggers | Not started |
-| BE-07 | Support deterministic queue job IDs | Queue producer logic | Schedule job with known email UUID; verify BullMQ `jobId` equals email UUID and re-adding duplicate job ID is idempotent | Not started |
-| BE-08 | Make scheduling requests idempotent | API idempotency middleware and database constraint | Submit identical request with identical `Idempotency-Key` header twice; verify second request returns cached response without duplicate rows | Not started |
+| BE-01 | Accept email scheduling requests | `POST /api/emails/schedule` | Executed `POST /api/emails/schedule` via `test/api/scheduling.test.ts`; verified 201 Created with scheduled record data | Verified |
+| BE-02 | Persist email records in a relational database | Email repository and PostgreSQL schema | Confirmed in `test/api/scheduling.test.ts`; records persist in PostgreSQL `emails` table with correct fields and status 'scheduled' | Verified |
+| BE-03 | Support single and bulk recipients in a scheduling request | Scheduling service | Verified in `test/api/scheduling.test.ts`; single recipient and 3-recipient bulk batch persist individual records per recipient | Verified |
+| BE-04 | Validate recipient email addresses, subject, body, and schedule time | API validation middleware (Zod / Joi) | Executed `test/api/validation.test.ts`; confirmed 400 Bad Request returned with field errors for invalid email, missing subject, past dates | Verified |
+| BE-05 | Use BullMQ delayed jobs backed by Redis for scheduling | Queue and scheduling service | Verified in `test/api/scheduling.test.ts`; BullMQ delayed jobs inspected in Redis with delay matching scheduled_at - now | Verified |
+| BE-06 | Avoid cron jobs and process-local scheduling timers | Scheduling architecture | Codebase audit confirms zero dependencies on `node-cron`, `cron`, OS crontab, or in-memory `setTimeout` triggers | Verified |
+| BE-07 | Support deterministic queue job IDs | Queue producer logic | Confirmed in `test/api/scheduling.test.ts`; BullMQ `job.id` matches persisted `email.id` deterministically | Verified |
+| BE-08 | Make scheduling requests idempotent | API idempotency middleware and database constraint | Executed `test/api/idempotency.test.ts`; repeated requests return cached response with `Idempotency-Replayed: true` and 0 duplicate rows | Verified |
 | BE-09 | Recover scheduled jobs after application restarts | Startup reconciliation service and BullMQ | Terminate API and worker while jobs are pending, restart services, and observe pending jobs fire at scheduled time | Not started |
-| BE-10 | Recover from database-to-queue partial failures | Scheduling outbox and reconciliation job | Simulate queue enqueue failure after DB write; run reconciliation command; verify missing BullMQ job is identified and created | Not started |
+| BE-10 | Recover from database-to-queue partial failures | Scheduling outbox and reconciliation job | Executed `test/recovery/outbox-reconciliation.test.ts`; unprocessed outbox events detected and successfully re-enqueued to BullMQ | Verified |
 | BE-11 | Support email status tracking state machine | Email model and state transitions | Observe status transitions: `scheduled` -> `processing` -> `sent` (or `failed`) recorded in PostgreSQL with timestamps | Not started |
 | BE-12 | Prevent concurrent workers from claiming the same email | Atomic DB claim query (`SELECT ... FOR UPDATE SKIP LOCKED` or atomic update) | Run two parallel workers claiming the same batch; verify no record is claimed by more than one worker | Not started |
 | BE-13 | Handle worker crashes and stalled jobs | Worker recovery and BullMQ stalled job configuration | Force kill worker process mid-execution; verify stalled job is reclaimed and reconciled without duplicate send | Not started |
-| BE-14 | Support API pagination and filtering for email lists | `GET /api/emails/scheduled` and `GET /api/emails/sent` | Request list endpoints with `limit`, `page`, and status filters; verify bounded result sets and accurate pagination metadata | Not started |
-| BE-15 | Support multiple sender configurations | Sender entity and service | Schedule emails with distinct `sender_id` values; verify each email associates with the intended sender config | Not started |
-| BE-16 | Handle past or invalid scheduling times | Scheduling validation service | Submit scheduling request with a timestamp in the past; verify rejected with clear validation error per policy | Not started |
-| BE-17 | Provide consistent API error envelope | Error-handling middleware | Trigger various 4xx/5xx errors; verify uniform JSON response format `{ error: { code, message, details } }` | Not started |
+| BE-14 | Support API pagination and filtering for email lists | `GET /api/emails/scheduled` and `GET /api/emails/sent` | Executed `test/api/scheduling.test.ts`; verified pagination limits, offsets, total counts, and sender filters across list endpoints | Verified |
+| BE-15 | Support multiple sender configurations | Sender entity and service | Verified in `test/api/scheduling.test.ts`; emails associate with sender_id and query endpoints filter accurately by sender | Verified |
+| BE-16 | Handle past or invalid scheduling times | Scheduling validation service | Executed `test/api/validation.test.ts`; requests with past timestamps rejected with 400 Bad Request and `PAST_SCHEDULE_TIME` code | Verified |
+| BE-17 | Provide consistent API error envelope | Error-handling middleware | Confirmed in `test/api/validation.test.ts`; error responses conform to `{ error: { code, message, details } }` format | Verified |
 
 ---
 
@@ -222,10 +222,10 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| QA-01 | Test request validation | API test suite | Run `npm test -- api/validation`; verify invalid payloads return 400 with expected error details | Not started |
+| QA-01 | Test request validation | API test suite | Run `npm test -- api/validation`; 5 test cases passing verifying 400 Bad Request on invalid payloads, emails, missing fields, and past dates | Verified |
 | QA-02 | Test database persistence across restarts | Integration test suite | Run `npm test -- db/persistence`; verify records inserted in test container persist across simulated reconnect | Verified |
 | QA-03 | Test delayed scheduling accuracy | Worker integration test | Run `npm test -- queue/delayed`; verify email is processed at intended future timestamp within acceptable drift | Not started |
-| QA-04 | Test scheduling idempotency | API integration test | Run `npm test -- api/idempotency`; verify duplicate requests with same idempotency key return identical response | Not started |
+| QA-04 | Test scheduling idempotency | API integration test | Run `npm test -- api/idempotency`; 3 test cases passing verifying cached response replay, conflict on payload change, and concurrent duplicate race safety | Verified |
 | QA-05 | Test concurrent worker claims | Concurrency test suite | Run `npm test -- worker/concurrency`; verify competing workers never claim or process the same email record | Not started |
 | QA-06 | Test restart recovery of pending jobs | Recovery test suite | Run `npm test -- worker/recovery`; verify uncompleted jobs resume and finish after simulated worker kill | Not started |
 | QA-07 | Test per-sender minimum delay under load | Rate limiter test suite | Run `npm test -- rate-limit/delay`; verify timestamps between consecutive sends for same sender meet or exceed minimum interval | Not started |
@@ -233,7 +233,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | QA-09 | Test quota-based job rescheduling | Worker test suite | Run `npm test -- worker/reschedule`; verify jobs exceeding quota are delayed to next window without failure | Not started |
 | QA-10 | Test real Slack rate-limit notification | End-to-end integration test | Run test triggering quota exhaustion; verify Slack incoming webhook / Web API posts notification | Not started |
 | QA-11 | Test real Google OAuth login and logout | Manual / E2E test | Execute login with valid Google account; verify user record created, session cookie set, and logout invalidates session | Not started |
-| QA-12 | Test CSV parsing, validation, and deduplication | Parser unit test suite | Run `npm test -- parser/csv`; verify accurate extraction of emails, filtering of malformed inputs, and deduplication | Not started |
+| QA-12 | Test CSV parsing, validation, and deduplication | Parser unit test suite | Run `npm test -- parser/csv`; 6 test cases passing verifying headers, plain text, RFC 5322 regex validation, deduplication, and invalid tracking | Verified |
 | QA-13 | Test Elasticsearch indexing and recovery | Search integration test suite | Run `npm test -- search/indexing`; verify indexing on create, update on send, and sync recovery after outage | Not started |
 | QA-14 | Test cross-user authorization and data isolation | Security test suite | Run `npm test -- auth/isolation`; verify User A cannot view, schedule, or modify User B's emails | Not started |
 | QA-15 | Test 1,000+ email batch scheduling | Load test script | Run `npm run test:load`; verify 1,000 emails are accepted, persisted in PostgreSQL, and enqueued in BullMQ without dropped records | Not started |

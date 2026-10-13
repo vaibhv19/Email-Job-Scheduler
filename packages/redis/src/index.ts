@@ -2,6 +2,8 @@ import { Redis, type RedisOptions } from 'ioredis';
 import dotenv from 'dotenv';
 import path from 'path';
 
+export * from './queue.js';
+
 // Attempt to load .env from workspace root if REDIS_URL is not set
 if (!process.env.REDIS_URL) {
   dotenv.config({ path: path.resolve(process.cwd(), '.env') });
