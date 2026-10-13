@@ -1,0 +1,37 @@
+{
+  "name": "reachinbox-email-scheduler",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ReachInbox Full-Stack Email Job Scheduler with BullMQ, Redis, PostgreSQL, and Elasticsearch",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc --build --verbose",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run --dir test/unit",
+    "test:api": "vitest run --dir test/api",
+    "test:queue": "vitest run --dir test/queue",
+    "test:ratelimit": "vitest run --dir test/ratelimit",
+    "test:recovery": "vitest run --dir test/recovery",
+    "test:load": "vitest run --dir test/load"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@typescript-eslint/eslint-plugin": "^8.18.1",
+    "@typescript-eslint/parser": "^8.18.1",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vitest": "^2.1.8"
+  }
+}

@@ -23,8 +23,8 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| INF-01 | Create a private GitHub repository | Repository settings | Repository visibility confirmed as Private in GitHub repository settings | Not started |
-| INF-02 | Set up a TypeScript monorepo | Root workspace (`package.json`, workspace config) | Run monorepo build command (`npm run build`); API, worker, and web compile cleanly | Not started |
+| INF-01 | Create a private GitHub repository | Repository settings | Repository visibility confirmed as Private in GitHub repository settings | Verified|
+| INF-02 | Set up a TypeScript monorepo | Root workspace (`package.json`, workspace config) | Run monorepo build command (`npm run build`); API, worker, and web compile cleanly | Verified |
 | INF-03 | Configure Express.js backend | `apps/api` | Run `npm run dev --filter api`; API starts and `curl http://localhost:3001/health` returns 200 OK | Not started |
 | INF-04 | Configure React frontend with TypeScript and Tailwind CSS | `apps/web` | Run `npm run build --filter web`; frontend compiles without errors and UI renders in browser | Not started |
 | INF-05 | Configure PostgreSQL with migrations | Database schema and migration tooling | Run migration script (`npm run db:migrate`); tables are created and confirmed via database query | Not started |
@@ -32,11 +32,11 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | INF-07 | Configure Elasticsearch | Search infrastructure | Run `curl http://localhost:9200/_cluster/health`; cluster responds green/yellow and index is created | Not started |
 | INF-08 | Configure Docker Compose for local development | `infra/docker-compose.yml` | Run `docker compose -f infra/docker-compose.yml up -d`; PostgreSQL, Redis, and Elasticsearch containers start and pass healthchecks | Not started |
 | INF-09 | Persist PostgreSQL and Redis data across restarts | Docker volume definitions and Redis persistence config | Restart containers (`docker compose down && docker compose up -d`); verify stored tables and Redis keys persist | Not started |
-| INF-10 | Provide environment variable templates | `.env.example` in root and applications | Inspect `.env.example`; verify all required configuration keys are documented with safe placeholder values | Not started |
+| INF-10 | Provide environment variable templates | `.env.example` in root and applications | Inspect `.env.example`; verify all required configuration keys are documented with safe placeholder values | Verified |
 | INF-11 | Separate API and worker into independent processes | `apps/api` and `apps/worker` | Launch API and worker in separate processes; verify each process starts, operates, and terminates independently | Not started |
 | INF-12 | Configure health and readiness checks | API endpoints (`/health`, `/ready`) | Query `GET /health` (liveness) and `GET /ready` (readiness with DB/Redis/ES checks); verify accurate 200/503 responses | Not started |
-| INF-13 | Configure TypeScript, linting, formatting, and test runners | Workspace configuration (`tsconfig.json`, ESLint, Prettier, test runner) | Run `npm run lint`, `npm run typecheck`, and `npm test`; all commands complete with zero errors | Not started |
-| INF-14 | Prevent secrets from entering source control | `.gitignore` and git history | Run `git status --ignored` and check commit history; verify `.env`, secret files, and credentials are excluded | Not started |
+| INF-13 | Configure TypeScript, linting, formatting, and test runners | Workspace configuration (`tsconfig.json`, ESLint, Prettier, test runner) | Run `npm run lint`, `npm run typecheck`, and `npm test`; all commands complete with zero errors | Verified |
+| INF-14 | Prevent secrets from entering source control | `.gitignore` and git history | Run `git status --ignored` and check commit history; verify `.env`, secret files, and credentials are excluded | Verified |
 
 ---
 
