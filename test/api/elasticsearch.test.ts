@@ -10,6 +10,7 @@ import {
   searchEmails,
   reconcileElasticsearchOutbox,
   ELASTICSEARCH_INDEX,
+  type IndexedEmail,
 } from '../../apps/api/src/services/elasticsearch.js';
 import { createSession } from '../../apps/api/src/modules/auth/session.js';
 import { DEFAULT_DEV_SENDER_ID, DEFAULT_DEV_USER_ID, ensureDefaultDevUser } from '../../apps/api/src/middleware/auth.js';
@@ -82,6 +83,12 @@ describe('Real Elasticsearch Indexing, User-Scoped Search & Recovery (Phase 7)',
     expect(matched?.subject).toContain(uniqueToken);
     expect(matched?.recipient_email).toBe(emailDoc.recipient_email);
     expect(searchRes.pagination.total).toBeGreaterThanOrEqual(1);
+
+    // 3. Verify HTTP search API with session cookie
+    const apiRes = await fetch(`${baseUrl}/api/emails/search?q=${uniqueToken}`, {
+      headers: { Cookie: sessionCookie },
+    });
+    expect(apiRes.status).toBe(200);
   });
 
   it('enforces strict tenant isolation: User B cannot find User A emails via Elasticsearch search', async () => {
@@ -210,7 +217,7 @@ describe('Real Elasticsearch Indexing, User-Scoped Search & Recovery (Phase 7)',
 
     // 4. Verify document exists in Elasticsearch
     const client = getElasticsearchClient();
-    const esDoc = await client.get({
+    const esDoc = await client.get<IndexedEmail>({
       index: ELASTICSEARCH_INDEX,
       id: outboxEmail.id,
     });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 interface AuthenticatedUser {
   id: string;
@@ -16,23 +16,26 @@ interface Sender {
   max_emails_per_hour: number;
 }
 
-interface ScheduledEmail {
+interface EmailItem {
   id: string;
+  user_id?: string;
+  sender_id?: string;
   recipient_email: string;
   subject: string;
-  scheduled_at: string;
+  body?: string;
   status: string;
+  scheduled_at: string;
+  sent_at?: string | null;
+  preview_url?: string | null;
   bullmq_job_id?: string;
+  last_error?: { message?: string } | string | null;
 }
 
-interface SentEmail {
-  id: string;
-  recipient_email: string;
-  subject: string;
-  status: string;
-  sent_at?: string;
-  preview_url?: string;
-  last_error?: { message?: string } | null;
+interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 }
 
 export const App: React.FC = () => {
@@ -40,22 +43,57 @@ export const App: React.FC = () => {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Dashboard Data State
+  // Tab & Search State
+  const [activeTab, setActiveTab] = useState<'scheduled' | 'sent'>('scheduled');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'sent' | 'failed'>('all');
+  const [page, setPage] = useState(1);
+
+  // Data State
   const [senders, setSenders] = useState<Sender[]>([]);
-  const [scheduledEmails, setScheduledEmails] = useState<ScheduledEmail[]>([]);
-  const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
-  const [activeTab, setActiveTab] = useState<'compose' | 'scheduled' | 'sent'>('compose');
+  const [emails, setEmails] = useState<EmailItem[]>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    limit: 15,
+    total: 0,
+    totalPages: 1,
+  });
+  const [isLoadingEmails, setIsLoadingEmails] = useState(false);
 
-  // Compose Form State
+  // Compose Modal State
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [selectedSenderId, setSelectedSenderId] = useState<string>('');
-  const [recipientEmail, setRecipientEmail] = useState<string>('');
-  const [subject, setSubject] = useState<string>('');
-  const [body, setBody] = useState<string>('');
-  const [scheduledDelayMinutes, setScheduledDelayMinutes] = useState<number>(5);
+  const [recipientInputMode, setRecipientInputMode] = useState<'text' | 'csv'>('text');
+  const [recipientText, setRecipientText] = useState('');
+  const [csvFileName, setCsvFileName] = useState<string | null>(null);
+  const [parsedCsvEmails, setParsedCsvEmails] = useState<string[]>([]);
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [scheduledAtLocal, setScheduledAtLocal] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formFeedback, setFormFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [composeFeedback, setComposeFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
-  // Check initial authentication state
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Session expiry handler
+  const handleSessionExpired = useCallback(() => {
+    setUser(null);
+    setAuthError('Your session has expired. Please sign in again with Google.');
+  }, []);
+
+  // Check initial authentication
   const checkAuth = useCallback(async () => {
     setIsLoadingAuth(true);
     try {
@@ -67,68 +105,100 @@ export const App: React.FC = () => {
       } else {
         setUser(null);
       }
-    } catch (err) {
-      console.error('Failed to verify session:', err);
+    } catch {
       setUser(null);
     } finally {
       setIsLoadingAuth(false);
     }
   }, []);
 
-  // Fetch Senders and Emails once authenticated
-  const loadDashboardData = useCallback(async () => {
+  // Fetch Senders
+  const loadSenders = useCallback(async () => {
     if (!user) return;
+    try {
+      const res = await fetch('/api/senders', { credentials: 'include' });
+      if (res.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      if (res.ok) {
+        const data = (await res.json()) as { senders: Sender[] };
+        setSenders(data.senders || []);
+        if (data.senders && data.senders.length > 0 && !selectedSenderId) {
+          setSelectedSenderId(data.senders[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch senders:', err);
+    }
+  }, [user, selectedSenderId, handleSessionExpired]);
+
+  // Fetch Emails (Search or Tab Listing)
+  const loadEmails = useCallback(async () => {
+    if (!user) return;
+    setIsLoadingEmails(true);
 
     try {
-      // 1. Fetch Senders
-      const sendersRes = await fetch('/api/senders', { credentials: 'include' });
-      if (sendersRes.ok) {
-        const sendersData = (await sendersRes.json()) as { senders: Sender[] };
-        setSenders(sendersData.senders || []);
-        if (sendersData.senders && sendersData.senders.length > 0 && !selectedSenderId) {
-          setSelectedSenderId(sendersData.senders[0].id);
+      let endpoint = '';
+      if (debouncedSearch) {
+        // Full-Text Search via Elasticsearch
+        setIsSearching(true);
+        const searchStatus = statusFilter !== 'all' ? statusFilter : activeTab;
+        endpoint = `/api/emails/search?q=${encodeURIComponent(debouncedSearch)}&page=${page}&limit=15&status=${searchStatus}`;
+      } else {
+        setIsSearching(false);
+        if (activeTab === 'scheduled') {
+          endpoint = `/api/emails/scheduled?page=${page}&limit=15`;
+        } else {
+          const filterParam = statusFilter !== 'all' ? `&status=${statusFilter}` : '';
+          endpoint = `/api/emails/sent?page=${page}&limit=15${filterParam}`;
         }
       }
 
-      // 2. Fetch Scheduled Emails
-      const scheduledRes = await fetch('/api/emails/scheduled?limit=50', { credentials: 'include' });
-      if (scheduledRes.ok) {
-        const scheduledData = (await scheduledRes.json()) as { data: ScheduledEmail[] };
-        setScheduledEmails(scheduledData.data || []);
+      const res = await fetch(endpoint, { credentials: 'include' });
+      if (res.status === 401) {
+        handleSessionExpired();
+        return;
       }
 
-      // 3. Fetch Sent Emails
-      const sentRes = await fetch('/api/emails/sent?limit=50', { credentials: 'include' });
-      if (sentRes.ok) {
-        const sentData = (await sentRes.json()) as { data: SentEmail[] };
-        setSentEmails(sentData.data || []);
+      if (res.ok) {
+        const result = (await res.json()) as { data: EmailItem[]; pagination: PaginationMeta };
+        setEmails(result.data || []);
+        if (result.pagination) {
+          setPagination(result.pagination);
+        }
       }
     } catch (err) {
-      console.error('Failed to fetch dashboard data:', err);
+      console.error('Failed to load email records:', err);
+    } finally {
+      setIsLoadingEmails(false);
     }
-  }, [user, selectedSenderId]);
+  }, [user, debouncedSearch, statusFilter, activeTab, page, handleSessionExpired]);
 
   useEffect(() => {
-    // Check for callback error in URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const errorParam = urlParams.get('error');
     if (errorParam) {
       setAuthError(decodeURIComponent(errorParam));
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-
     checkAuth();
   }, [checkAuth]);
 
   useEffect(() => {
     if (user) {
-      loadDashboardData();
+      loadSenders();
     }
-  }, [user, loadDashboardData]);
+  }, [user, loadSenders]);
 
-  // Handle Google OAuth Sign In
+  useEffect(() => {
+    if (user) {
+      loadEmails();
+    }
+  }, [user, loadEmails]);
+
+  // Handle Google Sign In
   const handleGoogleSignIn = () => {
-    // Genuine browser navigation to real Google OAuth endpoint
     window.location.href = '/api/auth/google';
   };
 
@@ -139,75 +209,167 @@ export const App: React.FC = () => {
         method: 'POST',
         credentials: 'include',
       });
+    } catch {
+      // Ignored
+    } finally {
       setUser(null);
+      setEmails([]);
       setSenders([]);
-      setScheduledEmails([]);
-      setSentEmails([]);
-    } catch (err) {
-      console.error('Logout failed:', err);
     }
   };
 
-  // Handle Schedule Email Submit
+  // Initialize Compose Modal default date (+10 mins)
+  const openComposeModal = () => {
+    const defaultDate = new Date(Date.now() + 10 * 60 * 1000);
+    // Format YYYY-MM-DDTHH:MM for datetime-local
+    const offset = defaultDate.getTimezoneOffset() * 60000;
+    const localISOTime = new Date(defaultDate.getTime() - offset).toISOString().slice(0, 16);
+    setScheduledAtLocal(localISOTime);
+    setComposeFeedback(null);
+    setIsComposeOpen(true);
+  };
+
+  // Parse CSV File in Browser
+  const handleCsvFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (!content) return;
+
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+      const matches = content.match(emailRegex) || [];
+      const uniqueEmails = Array.from(new Set(matches.map((m) => m.toLowerCase().trim())));
+
+      setParsedCsvEmails(uniqueEmails);
+    };
+    reader.readAsText(file);
+  };
+
+  // Computed Recipient List for Validation
+  const effectiveRecipients = useMemo(() => {
+    if (recipientInputMode === 'csv') {
+      return parsedCsvEmails;
+    }
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+    const matches = recipientText.match(emailRegex) || [];
+    return Array.from(new Set(matches.map((m) => m.toLowerCase().trim())));
+  }, [recipientInputMode, parsedCsvEmails, recipientText]);
+
+  // Handle Email Scheduling Submission
   const handleScheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!selectedSenderId) {
-      setFormFeedback({ type: 'error', message: 'Please select a valid sender.' });
+      setComposeFeedback({ type: 'error', message: 'Please select a sender account.' });
+      return;
+    }
+
+    if (effectiveRecipients.length === 0) {
+      setComposeFeedback({
+        type: 'error',
+        message: 'At least one valid recipient email is required.',
+      });
+      return;
+    }
+
+    if (!scheduledAtLocal) {
+      setComposeFeedback({ type: 'error', message: 'Scheduled time is required.' });
+      return;
+    }
+
+    const scheduledDate = new Date(scheduledAtLocal);
+    if (scheduledDate.getTime() < Date.now() - 60000) {
+      setComposeFeedback({ type: 'error', message: 'Scheduled time cannot be in the past.' });
       return;
     }
 
     setIsSubmitting(true);
-    setFormFeedback(null);
+    setComposeFeedback(null);
 
-    const scheduledDate = new Date(Date.now() + scheduledDelayMinutes * 60 * 1000);
+    const idempotencyKey = `ui_sched_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
     try {
+      const payload = {
+        sender_id: selectedSenderId,
+        recipient_emails: effectiveRecipients,
+        subject,
+        body,
+        scheduled_at: scheduledDate.toISOString(),
+      };
+
       const res = await fetch('/api/emails/schedule', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
         credentials: 'include',
-        body: JSON.stringify({
-          sender_id: selectedSenderId,
-          recipient_email: recipientEmail,
-          subject,
-          body,
-          scheduled_at: scheduledDate.toISOString(),
-        }),
+        body: JSON.stringify(payload),
       });
+
+      if (res.status === 401) {
+        handleSessionExpired();
+        return;
+      }
 
       const data = await res.json();
 
       if (res.ok) {
-        setFormFeedback({
+        setComposeFeedback({
           type: 'success',
-          message: `Email scheduled successfully for ${scheduledDate.toLocaleTimeString()}! BullMQ Job ID: ${data.data?.bullmq_job_id}`,
+          message: `Successfully scheduled ${data.scheduledCount || 1} email(s) for ${scheduledDate.toLocaleTimeString()}!`,
         });
-        setRecipientEmail('');
+
+        // Reset form
+        setRecipientText('');
+        setParsedCsvEmails([]);
+        setCsvFileName(null);
         setSubject('');
         setBody('');
-        loadDashboardData();
+
+        // Reload data
+        loadEmails();
+        setTimeout(() => setIsComposeOpen(false), 1200);
       } else {
-        setFormFeedback({
+        setComposeFeedback({
           type: 'error',
           message: data.error?.message || 'Failed to schedule email.',
         });
       }
     } catch {
-      setFormFeedback({
+      setComposeFeedback({
         type: 'error',
-        message: 'Network error communicating with scheduler API.',
+        message: 'Network communication error with scheduling API.',
       });
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Helper for quick delay buttons
+  const setQuickDelay = (minutes: number) => {
+    const target = new Date(Date.now() + minutes * 60 * 1000);
+    const offset = target.getTimezoneOffset() * 60000;
+    const local = new Date(target.getTime() - offset).toISOString().slice(0, 16);
+    setScheduledAtLocal(local);
+  };
+
+  // Active sender rate limit details
+  const activeSender = senders.find((s) => s.id === selectedSenderId);
+
+  // ============================================================================
+  // AUTHENTICATION GUARD: Loading Skeleton
+  // ============================================================================
   if (isLoadingAuth) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center">
         <div className="flex flex-col items-center space-y-4">
           <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-sm font-medium text-slate-400">Verifying authenticated session...</span>
+          <span className="text-sm font-medium text-slate-400">Verifying session security...</span>
         </div>
       </div>
     );
@@ -250,7 +412,7 @@ export const App: React.FC = () => {
               </svg>
             </div>
 
-            <h1 className="text-2xl font-bold tracking-tight text-white mb-2">Welcome to ReachInbox</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-white mb-2">ReachInbox Scheduler</h1>
             <p className="text-sm text-slate-400 mb-6">
               Sign in with your Google account to access your personal scheduled email dashboard.
             </p>
@@ -303,26 +465,37 @@ export const App: React.FC = () => {
   }
 
   // ============================================================================
-  // AUTHENTICATED STATE: Genuine Dashboard
+  // AUTHENTICATED STATE: Complete Dashboard & Composer
   // ============================================================================
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between">
-      {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-6 py-4 sticky top-0 z-50">
+      {/* Top Header */}
+      <header className="border-b border-slate-800 bg-slate-900/70 backdrop-blur-md px-6 py-4 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">
               R
             </div>
             <span className="font-semibold text-lg tracking-tight">ReachInbox</span>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              Authenticated
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hidden sm:inline-block">
+              OAuth Active
             </span>
           </div>
 
-          {/* User Profile & Sign Out */}
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-3 bg-slate-800/60 border border-slate-700/60 rounded-full py-1.5 px-3">
+          {/* Action Buttons & User Profile */}
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={openComposeModal}
+              id="compose-btn"
+              className="py-1.5 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs flex items-center space-x-1.5 shadow-md shadow-indigo-600/30 transition cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+              </svg>
+              <span>Compose Email</span>
+            </button>
+
+            <div className="flex items-center space-x-2.5 bg-slate-800/60 border border-slate-700/60 rounded-full py-1 px-3">
               {user.avatar_url ? (
                 <img
                   src={user.avatar_url}
@@ -334,15 +507,15 @@ export const App: React.FC = () => {
                   {user.name.charAt(0).toUpperCase()}
                 </div>
               )}
-              <div className="text-left hidden sm:block">
+              <div className="text-left hidden md:block">
                 <div className="text-xs font-medium text-slate-200">{user.name}</div>
-                <div className="text-[10px] text-slate-400 truncate max-w-[140px]">{user.email}</div>
+                <div className="text-[10px] text-slate-400 truncate max-w-[130px]">{user.email}</div>
               </div>
             </div>
 
             <button
               onClick={handleLogout}
-              className="text-xs py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+              className="text-xs py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
             >
               Sign out
             </button>
@@ -350,296 +523,468 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Dashboard */}
-      <main className="max-w-7xl mx-auto px-6 py-8 flex-1 w-full space-y-6">
-        {/* Navigation Tabs */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setActiveTab('compose')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition cursor-pointer ${
-                activeTab === 'compose'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              ✉️ Compose & Schedule
-            </button>
-            <button
-              onClick={() => setActiveTab('scheduled')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition cursor-pointer ${
-                activeTab === 'scheduled'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              ⏱️ Scheduled Outbox ({scheduledEmails.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('sent')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition cursor-pointer ${
-                activeTab === 'sent'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              ✅ Sent Emails ({sentEmails.length})
-            </button>
-          </div>
+      {/* Main Dashboard Workspace */}
+      <main className="max-w-7xl mx-auto px-6 py-6 flex-1 w-full space-y-6">
+        {/* Navigation, Tabs, and Search Bar */}
+        <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {/* Tab Controls */}
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => {
+                  setActiveTab('scheduled');
+                  setPage(1);
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold tracking-wide transition cursor-pointer ${
+                  activeTab === 'scheduled'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25'
+                    : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                ⏱️ Scheduled Outbox
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('sent');
+                  setPage(1);
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold tracking-wide transition cursor-pointer ${
+                  activeTab === 'sent'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25'
+                    : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                ✅ Sent & Delivered
+              </button>
+            </div>
 
-          <button
-            onClick={loadDashboardData}
-            className="text-xs flex items-center space-x-1.5 py-1.5 px-3 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/60 cursor-pointer"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            <span>Refresh</span>
-          </button>
-        </div>
-
-        {/* User Identity & Security Pill */}
-        <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-2">
-          <div className="flex items-center space-x-2">
-            <span className="font-semibold text-slate-300">Identity Key (Google sub):</span>
-            <span className="font-mono bg-slate-800 px-2 py-0.5 rounded text-indigo-300">
-              {user.google_subject || 'Verified'}
-            </span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <span className="font-semibold text-slate-300">Active Send Limit:</span>
-            <span className="bg-slate-800 px-2 py-0.5 rounded text-emerald-400">
-              50 emails/hour (2.0s min interval)
-            </span>
-          </div>
-        </div>
-
-        {/* TAB 1: COMPOSE & SCHEDULE */}
-        {activeTab === 'compose' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-slate-900/40 border border-slate-800 rounded-2xl p-6 shadow-xl">
-              <h2 className="text-lg font-semibold text-white mb-4">Schedule New Email</h2>
-
-              {formFeedback && (
-                <div
-                  className={`mb-4 p-3 rounded-lg text-xs ${
-                    formFeedback.type === 'success'
-                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
-                      : 'bg-red-500/10 border border-red-500/30 text-red-400'
-                  }`}
+            {/* Elasticsearch Search Bar & Filter */}
+            <div className="flex items-center space-x-2 flex-1 max-w-md">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search emails (Elasticsearch full-text)..."
+                  className="w-full bg-slate-800/90 border border-slate-700 rounded-xl pl-9 pr-8 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <svg
+                  className="w-4 h-4 text-slate-400 absolute left-3 top-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
                 >
-                  {formFeedback.message}
-                </div>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1.5 text-slate-400 hover:text-slate-200 text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {activeTab === 'sent' && (
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value as 'all' | 'sent' | 'failed');
+                    setPage(1);
+                  }}
+                  className="bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="all">All Sent</option>
+                  <option value="sent">Delivered</option>
+                  <option value="failed">Failed</option>
+                </select>
               )}
 
-              <form onSubmit={handleScheduleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Sender Account
-                  </label>
-                  <select
-                    value={selectedSenderId}
-                    onChange={(e) => setSelectedSenderId(e.target.value)}
-                    required
-                    className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    {senders.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.display_name} ({s.email}) — max {s.max_emails_per_hour}/hr
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Recipient Email
-                  </label>
-                  <input
-                    type="email"
-                    value={recipientEmail}
-                    onChange={(e) => setRecipientEmail(e.target.value)}
-                    required
-                    placeholder="recipient@example.com"
-                    className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              <button
+                onClick={loadEmails}
+                title="Refresh Table"
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                   />
-                </div>
+                </svg>
+              </button>
+            </div>
+          </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Subject Line
-                  </label>
-                  <input
-                    type="text"
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    required
-                    placeholder="Enter email subject"
-                    className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
+          {/* Active Search & Filter Indicator */}
+          {debouncedSearch && (
+            <div className="flex items-center space-x-2 text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 rounded-lg px-3 py-1.5">
+              <span>🔍 Searching Elasticsearch for: <strong>"{debouncedSearch}"</strong></span>
+              <span>— Found {pagination.total} matching email(s) {isSearching ? '(querying...)' : ''}</span>
+            </div>
+          )}
+        </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Email Body
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    required
-                    placeholder="Write your email body content..."
-                    className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  ></textarea>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Dispatch Delay: {scheduledDelayMinutes} minutes from now
-                  </label>
-                  <input
-                    type="range"
-                    min="1"
-                    max="60"
-                    value={scheduledDelayMinutes}
-                    onChange={(e) => setScheduledDelayMinutes(parseInt(e.target.value, 10))}
-                    className="w-full accent-indigo-500"
-                  />
-                </div>
-
+        {/* Emails Table */}
+        <div className="bg-slate-900/40 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+          {isLoadingEmails ? (
+            <div className="py-20 text-center flex flex-col items-center justify-center space-y-3">
+              <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-xs text-slate-400">Loading email records...</span>
+            </div>
+          ) : emails.length === 0 ? (
+            <div className="py-20 text-center flex flex-col items-center justify-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-slate-800/80 flex items-center justify-center text-slate-500">
+                ✉️
+              </div>
+              <div className="text-sm font-medium text-slate-300">
+                {debouncedSearch
+                  ? `No search results matching "${debouncedSearch}"`
+                  : activeTab === 'scheduled'
+                    ? 'No scheduled emails in queue'
+                    : 'No sent emails recorded'}
+              </div>
+              <p className="text-xs text-slate-500 max-w-sm">
+                {activeTab === 'scheduled'
+                  ? 'Compose and schedule emails with staggered delays and rate limits.'
+                  : 'Delivered and failed emails will appear here after worker processing.'}
+              </p>
+              {activeTab === 'scheduled' && !debouncedSearch && (
                 <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition shadow-lg shadow-indigo-600/30 disabled:opacity-50 cursor-pointer"
+                  onClick={openComposeModal}
+                  className="mt-2 py-1.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium cursor-pointer"
                 >
-                  {isSubmitting ? 'Scheduling with BullMQ...' : 'Schedule Email'}
+                  Compose Your First Email
                 </button>
-              </form>
+              )}
             </div>
-
-            {/* Senders Overview Card */}
-            <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-              <h2 className="text-lg font-semibold text-white">Your Senders</h2>
-              <div className="space-y-3">
-                {senders.map((s) => (
-                  <div
-                    key={s.id}
-                    className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/50 text-xs space-y-1"
-                  >
-                    <div className="font-semibold text-slate-200">{s.display_name}</div>
-                    <div className="text-slate-400">{s.email}</div>
-                    <div className="text-[10px] text-indigo-400 pt-1">
-                      Min interval: {s.min_send_interval_ms}ms | Quota: {s.max_emails_per_hour}/hr
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: SCHEDULED EMAILS */}
-        {activeTab === 'scheduled' && (
-          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 shadow-xl">
-            <h2 className="text-lg font-semibold text-white mb-4">Scheduled Queue Outbox</h2>
-            {scheduledEmails.length === 0 ? (
-              <p className="text-xs text-slate-500">No pending scheduled emails found in queue.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="border-b border-slate-800 text-slate-400 uppercase">
-                    <tr>
-                      <th className="py-2 px-3">Recipient</th>
-                      <th className="py-2 px-3">Subject</th>
-                      <th className="py-2 px-3">Scheduled At</th>
-                      <th className="py-2 px-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60">
-                    {scheduledEmails.map((e) => (
-                      <tr key={e.id} className="hover:bg-slate-800/30">
-                        <td className="py-2.5 px-3 font-medium text-slate-200">{e.recipient_email}</td>
-                        <td className="py-2.5 px-3">{e.subject}</td>
-                        <td className="py-2.5 px-3 text-slate-400">
-                          {new Date(e.scheduled_at).toLocaleString()}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px]">
-                            {e.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 3: SENT EMAILS */}
-        {activeTab === 'sent' && (
-          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 shadow-xl">
-            <h2 className="text-lg font-semibold text-white mb-4">Delivered & Completed Emails</h2>
-            {sentEmails.length === 0 ? (
-              <p className="text-xs text-slate-500">No sent emails recorded yet.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="border-b border-slate-800 text-slate-400 uppercase">
-                    <tr>
-                      <th className="py-2 px-3">Recipient</th>
-                      <th className="py-2 px-3">Subject</th>
-                      <th className="py-2 px-3">Sent At</th>
-                      <th className="py-2 px-3">Status</th>
-                      <th className="py-2 px-3">Preview</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60">
-                    {sentEmails.map((e) => (
-                      <tr key={e.id} className="hover:bg-slate-800/30">
-                        <td className="py-2.5 px-3 font-medium text-slate-200">{e.recipient_email}</td>
-                        <td className="py-2.5 px-3">{e.subject}</td>
-                        <td className="py-2.5 px-3 text-slate-400">
-                          {e.sent_at ? new Date(e.sent_at).toLocaleString() : 'N/A'}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] ${
-                              e.status === 'sent'
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                            }`}
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="border-b border-slate-800 bg-slate-900/60 text-slate-400 uppercase text-[10px] tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4">Recipient</th>
+                    <th className="py-3 px-4">Subject</th>
+                    <th className="py-3 px-4">{activeTab === 'scheduled' ? 'Scheduled At' : 'Sent At'}</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Details & Preview</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                  {emails.map((e) => (
+                    <tr key={e.id} className="hover:bg-slate-800/25 transition">
+                      <td className="py-3 px-4 font-medium text-slate-200">
+                        <div className="truncate max-w-[220px]">{e.recipient_email}</div>
+                      </td>
+                      <td className="py-3 px-4 text-slate-300">
+                        <div className="truncate max-w-[320px] font-medium">{e.subject}</div>
+                      </td>
+                      <td className="py-3 px-4 text-slate-400 whitespace-nowrap">
+                        {activeTab === 'scheduled'
+                          ? new Date(e.scheduled_at).toLocaleString()
+                          : e.sent_at
+                            ? new Date(e.sent_at).toLocaleString()
+                            : new Date(e.scheduled_at).toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${
+                            e.status === 'sent'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : e.status === 'failed'
+                                ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                : e.status === 'processing'
+                                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                  : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                          }`}
+                        >
+                          {e.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        {e.preview_url ? (
+                          <a
+                            href={e.preview_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center space-x-1 text-xs text-indigo-400 hover:text-indigo-300 hover:underline"
                           >
-                            {e.status}
+                            <span>Ethereal Preview</span>
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </a>
+                        ) : e.status === 'failed' ? (
+                          <span
+                            title={typeof e.last_error === 'string' ? e.last_error : e.last_error?.message || 'Delivery error'}
+                            className="text-red-400 text-[11px] cursor-help"
+                          >
+                            Error info
                           </span>
-                        </td>
-                        <td className="py-2.5 px-3">
-                          {e.preview_url ? (
-                            <a
-                              href={e.preview_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-indigo-400 hover:text-indigo-300 underline"
-                            >
-                              View Ethereal Email
-                            </a>
-                          ) : (
-                            <span className="text-slate-600">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        ) : (
+                          <span className="text-slate-600 font-mono text-[10px]">
+                            {e.bullmq_job_id ? `Job #${e.bullmq_job_id.slice(-6)}` : '—'}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Pagination Footer */}
+          {pagination.totalPages > 1 && (
+            <div className="border-t border-slate-800/80 px-4 py-3 flex items-center justify-between text-xs text-slate-400 bg-slate-900/30">
+              <div>
+                Page <strong>{pagination.page}</strong> of <strong>{pagination.totalPages}</strong> ({pagination.total} total)
               </div>
-            )}
-          </div>
-        )}
+              <div className="flex items-center space-x-2">
+                <button
+                  disabled={pagination.page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  Previous
+                </button>
+                <button
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </main>
 
+      {/* ======================================================================= */}
+      {/* COMPOSE & SCHEDULE MODAL                                                */}
+      {/* ======================================================================= */}
+      {isComposeOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl max-h-[92vh] overflow-y-auto shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h2 className="text-base font-bold text-white flex items-center space-x-2">
+                <span>✉️</span>
+                <span>Compose & Schedule Email</span>
+              </h2>
+              <button
+                onClick={() => setIsComposeOpen(false)}
+                className="text-slate-400 hover:text-white text-sm p-1 rounded-lg hover:bg-slate-800"
+              >
+                ✕
+              </button>
+            </div>
+
+            {composeFeedback && (
+              <div
+                className={`p-3 rounded-xl text-xs ${
+                  composeFeedback.type === 'success'
+                    ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                    : 'bg-red-500/10 border border-red-500/30 text-red-400'
+                }`}
+              >
+                {composeFeedback.message}
+              </div>
+            )}
+
+            <form onSubmit={handleScheduleSubmit} className="space-y-4 text-xs">
+              {/* Sender Account */}
+              <div>
+                <label className="block font-medium text-slate-300 mb-1">Sender Account</label>
+                <select
+                  value={selectedSenderId}
+                  onChange={(e) => setSelectedSenderId(e.target.value)}
+                  required
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {senders.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.display_name} ({s.email}) — {s.max_emails_per_hour}/hr quota
+                    </option>
+                  ))}
+                </select>
+                {activeSender && (
+                  <div className="mt-1 text-[11px] text-indigo-400">
+                    Inter-send interval: {activeSender.min_send_interval_ms}ms | Hourly limit: {activeSender.max_emails_per_hour} emails
+                  </div>
+                )}
+              </div>
+
+              {/* Recipient Mode Tabs */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="font-medium text-slate-300">Recipients</label>
+                  <div className="flex items-center space-x-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+                    <button
+                      type="button"
+                      onClick={() => setRecipientInputMode('text')}
+                      className={`px-2.5 py-0.5 rounded text-[11px] font-medium ${
+                        recipientInputMode === 'text'
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Manual / Paste
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRecipientInputMode('csv')}
+                      className={`px-2.5 py-0.5 rounded text-[11px] font-medium ${
+                        recipientInputMode === 'csv'
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      CSV Upload
+                    </button>
+                  </div>
+                </div>
+
+                {recipientInputMode === 'text' ? (
+                  <textarea
+                    rows={3}
+                    value={recipientText}
+                    onChange={(e) => setRecipientText(e.target.value)}
+                    placeholder="Enter email addresses (separated by commas or newlines)..."
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-[11px]"
+                  />
+                ) : (
+                  <div className="border-2 border-dashed border-slate-700 rounded-xl p-4 text-center bg-slate-800/40">
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={handleCsvFileUpload}
+                      className="hidden"
+                      id="csv-file-input"
+                    />
+                    <label
+                      htmlFor="csv-file-input"
+                      className="cursor-pointer text-indigo-400 hover:text-indigo-300 font-medium"
+                    >
+                      📁 {csvFileName ? `Selected: ${csvFileName}` : 'Choose CSV File with Recipients'}
+                    </label>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Extracts and deduplicates valid email addresses from any column in the CSV.
+                    </p>
+                  </div>
+                )}
+
+                {/* Recipient Count Validation Feedback */}
+                <div className="mt-1 flex items-center justify-between text-[11px]">
+                  <span
+                    className={`font-medium ${
+                      effectiveRecipients.length > 0 ? 'text-emerald-400' : 'text-slate-500'
+                    }`}
+                  >
+                    ● Valid Recipients Detected: {effectiveRecipients.length}
+                  </span>
+                  {effectiveRecipients.length > 1 && (
+                    <span className="text-amber-400">
+                      Batch send: will be queued with staggered timestamps
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Subject */}
+              <div>
+                <label className="block font-medium text-slate-300 mb-1">Subject</label>
+                <input
+                  type="text"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  required
+                  placeholder="Email subject line..."
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                />
+              </div>
+
+              {/* Body */}
+              <div>
+                <label className="block font-medium text-slate-300 mb-1">Message Body</label>
+                <textarea
+                  rows={4}
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  required
+                  placeholder="Enter email message body..."
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                />
+              </div>
+
+              {/* Start / Scheduled Dispatch Time */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-medium text-slate-300">Scheduled Dispatch Time</label>
+                  <div className="flex items-center space-x-1">
+                    <button
+                      type="button"
+                      onClick={() => setQuickDelay(5)}
+                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[10px] text-slate-300 cursor-pointer"
+                    >
+                      +5m
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuickDelay(30)}
+                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[10px] text-slate-300 cursor-pointer"
+                    >
+                      +30m
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuickDelay(120)}
+                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[10px] text-slate-300 cursor-pointer"
+                    >
+                      +2h
+                    </button>
+                  </div>
+                </div>
+                <input
+                  type="datetime-local"
+                  value={scheduledAtLocal}
+                  onChange={(e) => setScheduledAtLocal(e.target.value)}
+                  required
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                />
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="pt-2 flex items-center space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setIsComposeOpen(false)}
+                  className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || effectiveRecipients.length === 0}
+                  className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs transition shadow-lg shadow-indigo-600/30 disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmitting ? 'Scheduling with BullMQ...' : `Schedule ${effectiveRecipients.length} Email(s)`}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 py-6 text-center text-xs text-slate-500">
+      <footer className="border-t border-slate-800/80 py-5 text-center text-xs text-slate-500">
         ReachInbox.ai Software Development Intern Assignment &copy; {new Date().getFullYear()}
       </footer>
     </div>
