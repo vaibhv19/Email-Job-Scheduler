@@ -75,7 +75,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | SMTP-05 | Generate a stable Message-ID per logical email | Mail service | Verified in `test/worker/delivery.test.ts`; `message_id` is stably derived as `<email-id@reachinbox.test>` across attempts | Verified |
 | SMTP-06 | Classify retryable and permanent failures | Worker error handler | Executed `test/worker/delivery.test.ts`; 4xx transient errors trigger retry reset to 'scheduled', 5xx errors transition to 'failed' | Verified |
 | SMTP-07 | Avoid duplicate logical email creation | Database constraints and API logic | Verified across API, parser, and concurrency suites; unique constraints and atomic claim prevent duplicate records | Verified |
-| SMTP-08 | Handle ambiguous SMTP outcomes conservatively | Worker recovery and attempt tracking | Executed `test/worker/post-acceptance-crash.test.ts`; accepted attempt before crash reconciled to 'sent' without re-sending | Verified |
+| SMTP-08 | Handle ambiguous SMTP outcomes conservatively | Worker recovery and attempt tracking | Executed `test/worker/post-acceptance-crash.test.ts`; verified in-progress attempt during crash transitions to 'unknown' outcome and non-retryable 'failed' status (`AMBIGUOUS_CRASH_OUTCOME`, manual review required); pre-attempt crash safely reverts to 'scheduled'; accepted attempt reconciles to 'sent' | Verified |
 | SMTP-09 | Document the exactly-once delivery limitation | `README.md` and architecture docs | Documented in `docs/architecture.md` and codebase; explicitly discloses BullMQ at-least-once processing and SMTP network limitations | Verified |
 
 **Reliability note:** BullMQ provides at-least-once job processing, not guaranteed exactly-once external delivery. A stable Message-ID does not guarantee SMTP-provider deduplication. The implementation must explicitly document and mitigate this limitation.
@@ -263,8 +263,13 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | DOC-12 | Document all implemented features mapped to checklist | `README.md` | Inspect feature list; verify direct mapping from features to assignment checklist IDs | Not started |
 | DOC-13 | Document assumptions, trade-offs, and design decisions | `README.md` | Review architecture notes for explicit justifications of technical choices and acknowledged trade-offs | Not started |
 | DOC-14 | Provide clean `.env.example` with all configuration keys | `.env.example` in repository root | Inspect `.env.example`; verify all required environment variables are listed with dummy values and documentation | Not started |
-| DOC-15 | Deploy application to accessible cloud hosting environment | Cloud hosting (e.g. Render, Railway, AWS, Fly.io) | Access deployed frontend and backend URLs; verify hosted application is reachable and functional | Not started |
-| DOC-16 | Verify production environment configuration and integrations | Hosted environment deployment | Execute test workflow on hosted instance; verify OAuth, DB, Redis, worker, and SMTP function in production | Not started |
+| DOC-15 | Deploy application to accessible cloud hosting environment | Oracle Cloud Always Free VM (Docker Compose + Reverse Proxy) | Access deployed frontend and backend URLs on Oracle Cloud Always Free VM over HTTPS; verify hosted application is reachable and functional | Not started |
+| DOC-16 | Verify production environment configuration and integrations | Hosted Oracle Cloud VM environment | Execute test workflow on hosted instance; verify OAuth, DB, Redis, worker, and SMTP function on Oracle Cloud VM | Not started |
+| DOC-17 | Verify container image CPU architecture compatibility (ARM64 / multi-arch) on target VM | Target VM Docker deployment | Run `uname -m` and inspect container images; verify API, worker, web, PostgreSQL, Redis, and Elasticsearch initialize natively without architecture faults | Not started |
+| DOC-18 | Configure reverse proxy with HTTPS and internal network isolation | Reverse proxy configuration (Nginx / Caddy) | Verify Let's Encrypt TLS on ports 80/443; execute port scan against public VM IP verifying ports 5432, 6379, 9200, and Bull Board are not publicly reachable | Not started |
+| DOC-19 | Configure Elasticsearch resource bounds and monitor memory consumption on target VM | Target VM environment config (`ES_JAVA_OPTS`) | Verify `ES_JAVA_OPTS` limits heap (`-Xms512m -Xmx512m`); inspect `docker stats` under workload to ensure total memory stays within VM allocation and zero OOM kills occur | Not started |
+| DOC-20 | Verify state persistence, scheduled-job recovery, and outbox reconciliation across container restarts and host VM reboot | Deployment recovery verification | Schedule future email, reboot host VM (`sudo reboot`), verify full stack auto-recovers on boot and pending email delivery completes cleanly | Not started |
+| DOC-21 | Verify outbound SMTP egress connectivity from Oracle Cloud VM | Network security & SMTP transport | Probe port 587/465 egress from VM (`nc -zv smtp.ethereal.email 587`); execute test send confirming OCI VCN security lists permit SMTP outbound | Not started |
 
 ---
 
@@ -324,7 +329,7 @@ The assignment is ready for submission only when:
 - [ ] README setup instructions, architecture, and limitation documentation have been followed and verified.
 - [ ] Repository is private with collaborator invitations issued to `Mitrajit` and `Yadav036`.
 - [ ] Demo video (<= 5 minutes) is recorded, publicly accessible without permission walls, and demonstrates required flows.
-- [ ] Application is deployed to a hosted environment and confirmed accessible.
+- [ ] Application is deployed to an Oracle Cloud Always Free VM via Docker Compose, secured behind an HTTPS reverse proxy with private network isolation, and confirmed accessible.
 - [ ] All submission form fields are prepared and the ClickUp submission form is submitted successfully.
 
 ---

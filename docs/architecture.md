@@ -20,7 +20,9 @@ This document is subordinate to `docs/requirements-checklist.md`. Every implemen
 | Queue dashboard | Bull Board | Operational queue visibility |
 | Authentication | Google OAuth | User authentication |
 | Notifications | Slack OAuth and Slack API | Rate-limit notifications |
-| Infrastructure | Docker Compose | Local service orchestration |
+| Infrastructure | Docker Compose | Local service and single-host orchestration |
+| Reverse proxy | Nginx / Caddy | Public TLS termination and routing (Phase 10 deployment) |
+| Deployment target | Oracle Cloud Infrastructure (Always Free VM) | Constrained single-host demonstration hosting (Phase 10) |
 
 Use compatible, stable package versions and commit the lockfile.
 
@@ -504,3 +506,115 @@ Do not claim unlimited throughput or production-scale guarantees from a small as
 9. Every mandatory requirement maps to `docs/requirements-checklist.md`.
 10. Every implemented feature must have verification evidence.
 11. Trade-offs and unimplemented requirements must be documented honestly.
+
+## 19. Target Deployment Architecture — Oracle Cloud Infrastructure (OCI) Always Free VM
+
+### 19.1 Target Platform and Single-Host Topology
+- **Platform:** Oracle Cloud Infrastructure (OCI) Always Free compute tier.
+- **Topology:** Single standalone virtual machine running the full containerized application stack via Docker Compose.
+- **Hardware & CPU Architecture:**
+  - Deployment target candidates include OCI Ampere A1 Compute (Arm-based, up to 4 OCPUs / 24 GB RAM eligible across tenancy) or AMD micro compute instances (x86_64, 1/8 OCPU / 1 GB RAM).
+  - **Architecture Dependency:** If an Ampere A1 (ARM64) instance is selected, all container images (Node.js base images for API/worker/frontend, PostgreSQL, Redis, Elasticsearch) and native dependencies must support `linux/arm64`. Multi-arch or ARM64-compatible Docker base images (`node:20-alpine` or `node:20-bookworm-slim`, official `postgres:16-alpine`, `redis:7-alpine`, and official `elasticsearch:8.x`) must be verified at deployment time.
+  - **Deployment-Time Fact Verification:** Target shape, actual CPU architecture, available memory, disk quota, region availability, and Always Free capacity availability are strictly deployment-time facts to verify during Phase 10. Do not treat instance availability as a static guarantee.
+- **Availability & SLA Assumption:**
+  - This architecture represents an educational/internship assignment demonstration environment hosted on a single constrained virtual machine.
+  - It is **not** a fault-tolerant, multi-AZ, or highly available production cluster.
+  - Single-host failure, cloud hypervisor maintenance, host reboots, or Oracle Cloud free-tier capacity reclamation will result in service downtime. Uninterrupted uptime is explicitly disclaimed.
+
+### 19.2 Container Orchestration & Private Network Boundary
+The containerized runtime topology on the target VM consists of:
+1. **Reverse Proxy (Nginx / Caddy):** Exposes ports `80` (HTTP redirect) and `443` (HTTPS). Manages TLS certificate provisioning (e.g., Let's Encrypt / Certbot) and proxies traffic to the internal frontend and API containers.
+2. **React Web Frontend (Vite / Static Web Server):** Serves the compiled ReachInbox client bundle over the internal Docker network.
+3. **Express API Server:** Listens on internal port `3001` (or internal network), reachable only through the reverse proxy.
+4. **BullMQ Background Worker:** Runs as a dedicated background process on the internal Docker network, connecting to PostgreSQL and Redis. No external ports exposed.
+5. **PostgreSQL 16:** Runs on the internal Docker network (`reachinbox-network`).
+6. **Redis 7:** Runs on the internal Docker network with AOF persistence enabled.
+7. **Elasticsearch 8:** Runs on the internal Docker network for indexing and search queries.
+
+```text
+                      Internet (Public Clients / Webhooks)
+                                       │
+                              HTTPS:443 / HTTP:80
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │  Reverse Proxy (Nginx/Caddy)  │  (Public Edge)
+                       └───────────────┬───────────────┘
+                                       │ Docker Private Network
+       ┌───────────────────────────────┼──────────────────────────────┐
+       │                               │                              │
+┌──────▼──────┐                 ┌──────▼──────┐                ┌──────▼──────┐
+│  React Web  │                 │ Express API │                │ Bull Board  │
+│  (Port 80)  │                 │ (Port 3001) │                │(Auth-Gated) │
+└─────────────┘                 └──────┬──────┘                └──────┬──────┘
+                                       │                              │
+            ┌──────────────────────────┼──────────────────────────────┤
+            │                          │                              │
+     ┌──────▼──────┐            ┌──────▼──────┐                ┌──────▼──────┐
+     │ PostgreSQL  │            │ Redis 7.x   │◄───────────────┤   Worker    │
+     │ (Port 5432) │            │ (Port 6379) │                │ (No Ports)  │
+     └──────┬──────┘            └─────────────┘                └──────┬──────┘
+            │                          ▲                              │
+            │                          │ (AOF Volume)                 ▼
+            │                   ┌──────┴──────┐                ┌─────────────┐
+            └──────────────────►│Elasticsearch│                │Ethereal SMTP│
+                                │ (Port 9200) │                │(Outbound    │
+                                └─────────────┘                │ Port 587)   │
+```
+
+**Network Isolation Safeguards:**
+- Internal stateful services (`postgres`, `redis`, `elasticsearch`) and worker processes **must not publish host ports** directly to `0.0.0.0` or the public VM IP.
+- Operational dashboards (Bull Board at `/admin/queues`) must be routed strictly through the reverse proxy behind HTTP Basic Authentication and session authorization; never exposed on raw host ports.
+- Oracle Cloud VCN Security Lists / Network Security Groups (NSGs) and host firewalls (`iptables` / `firewalld` / `ufw`) must restrict inbound ingress strictly to ports `22` (SSH administrative access, key-based only), `80` (HTTP ACME/redirect), and `443` (HTTPS).
+
+### 19.3 Resource Constraints & Elasticsearch Heap Budgeting
+- **Elasticsearch Memory Footprint:**
+  - Elasticsearch is a Java-based process with significant memory and heap demands. By default, Elasticsearch can exhaust available RAM on small VMs, causing Linux Out-Of-Memory (OOM) killer terminations of the worker, API, or database.
+  - On a constrained VM (e.g., Ampere A1 with 6–24 GB or an AMD instance), Elasticsearch heap must be explicitly bounded via `ES_JAVA_OPTS`:
+    - Recommended budget: `-Xms512m -Xmx512m` (or at most `-Xms1g -Xmx1g` if ample RAM exists).
+    - Swap should be disabled or memory paging controlled to preserve Lucene performance.
+- **System Memory Budgeting:**
+  - Target allocation across containers must be budgeted before deployment:
+    - PostgreSQL: ~256MB–512MB shared buffers / working memory.
+    - Redis: ~128MB–256MB (maxmemory policy: `noeviction` for queue reliability).
+    - Elasticsearch: 512MB heap + ~512MB Lucene off-heap cache = ~1GB.
+    - Node.js API: ~256MB.
+    - Node.js Worker: ~256MB.
+    - Reverse Proxy & OS Overhead: ~512MB.
+  - Total working set: ~2.5 GB minimum recommended RAM. If running on an instance with less memory, resource starvation risks must be documented and monitored.
+- **Worker Concurrency Bounding:**
+  - Worker concurrency (`WORKER_CONCURRENCY`) must be tuned to VM CPU cores (typically `2` to `5` jobs).
+  - Do not blindly increase concurrency to compensate for resource constraints, as excessive concurrent Nodemailer connections and DB transactions will trigger connection timeouts and CPU saturation.
+
+### 19.4 Persistence, Backup Considerations, and Crash Recovery
+- **Docker Named Volumes:**
+  - Persistent state must reside in dedicated Docker named volumes or host-mounted volumes:
+    - PostgreSQL data: `postgres_data -> /var/lib/postgresql/data`
+    - Redis data: `redis_data -> /data`
+    - Elasticsearch data: `es_data -> /usr/share/elasticsearch/data`
+- **Redis Durability:**
+  - Append-Only File (`appendonly yes`, `appendfsync everysec`) must be enabled on Redis so that delayed job metadata in BullMQ survives container restarts.
+- **Single-Host Failure Boundary & Backup Considerations:**
+  - **Volume Durability Limit:** Named volumes protect data across container updates and restarts (`docker compose down && docker compose up -d`), but **do not protect against VM termination, local disk corruption, or cloud tenancy deletion**.
+  - Periodic database backups (`pg_dump`) to remote object storage or local compressed snapshots represent a necessary consideration for persistent environments.
+- **Restart Policies & Reboot Resilience:**
+  - All Compose services must configure `restart: unless-stopped`.
+  - The Docker daemon must be enabled via `systemctl enable docker` so the full stack recovers automatically on VM reboot.
+  - On startup, the transactional outbox reconciliation service detects and re-enqueues any orphaned email jobs, ensuring clean recovery from host reboots.
+
+### 19.5 Networking, HTTPS, and Outbound SMTP Verification
+- **HTTPS & OAuth Callbacks:**
+  - Google OAuth 2.0 and Slack OAuth strictly require HTTPS callback URLs for non-localhost endpoints.
+  - The reverse proxy must provide valid TLS certificates matching the registered domain (e.g., `https://reachinbox.<domain>/api/auth/google/callback`).
+  - Session cookies must enforce `COOKIE_SECURE=true` and `SameSite=lax`.
+- **Server-Side Secret Isolation:**
+  - All credentials (`SESSION_SECRET`, `TOKEN_ENCRYPTION_KEY`, `GOOGLE_CLIENT_SECRET`, `SLACK_CLIENT_SECRET`, database passwords) must reside exclusively in a server-side `.env` file on the VM with restricted file permissions (`chmod 600 .env`).
+  - Client-side builds must contain only public `VITE_*` variables.
+- **Outbound SMTP Port Egress Verification:**
+  - Cloud hosting platforms (including Oracle Cloud Infrastructure) frequently block outbound TCP traffic on port `25` by default to prevent spam, and some tenancies restrict outbound ports `587` or `465`.
+  - SMTP connectivity to `smtp.ethereal.email` over port `587` (STARTTLS) or `465` (SSL) must be actively verified from within the deployed VM using `nc -zv smtp.ethereal.email 587` or a probe script.
+  - Security Lists and OCI VCN Egress Rules must permit outbound TCP traffic to the target SMTP port.
+
+### 19.6 Operational & Delivery Limitations
+- **Ethereal SMTP Preview-Only:** Ethereal SMTP captures messages for testing and provides message preview URLs (`nodemailer.getTestMessageUrl`); it does not deliver messages to real recipient inboxes.
+- **Single Point of Failure (SPOF):** Running all application tiers, queue storage, and relational storage on a single VM means any hardware, hypervisor, or OS fault halts the entire system.
+- **At-Least-Once Delivery Ambiguity:** As defined in Section 11, BullMQ ensures at-least-once job execution. Network interruptions occurring after SMTP acceptance but before database confirmation cannot guarantee exactly-once delivery; recovery logic handles this conservatively without blind duplicate dispatch.

@@ -315,8 +315,13 @@ Every single requirement ID (195 total) from [`docs/requirements-checklist.md`](
 | `DOC-12` | Document all implemented features mapped to checklist | Tier 1 (Static) | Inspect feature list; verify direct mapping from features to assignment checklist IDs |
 | `DOC-13` | Document assumptions, trade-offs, and design decisions | Tier 1 (Static) | Review architecture notes for explicit justifications of technical choices and acknowledged trade-offs |
 | `DOC-14` | Provide clean `.env.example` with all configuration keys | Tier 1 (Static) | Inspect `.env.example`; verify all required environment variables are listed with dummy values and documentation |
-| `DOC-15` | Deploy application to accessible cloud hosting environment | Tier 5 (Manual E2E) | Access deployed frontend and backend URLs; verify hosted application is reachable and functional |
-| `DOC-16` | Verify production environment configuration and integrations | Tier 5 (Manual E2E) | Execute test workflow on hosted instance; verify OAuth, DB, Redis, worker, and SMTP function in production |
+| `DOC-15` | Deploy application to accessible cloud hosting environment | Tier 5 (Manual E2E) | Access deployed frontend and backend URLs on Oracle Cloud Always Free VM; verify hosted application is reachable and functional over HTTPS |
+| `DOC-16` | Verify production environment configuration and integrations | Tier 5 (Manual E2E) | Execute test workflow on hosted instance; verify OAuth, DB, Redis, worker, and SMTP function on Oracle Cloud VM |
+| `DOC-17` | Verify container image CPU architecture compatibility (ARM64 / multi-arch) on target VM | Tier 5 (Deployment) | Run `uname -m` and verify container images (`postgres`, `redis`, `elasticsearch`, `api`, `worker`, `web`) initialize without binary emulation or architecture faults |
+| `DOC-18` | Configure reverse proxy with HTTPS and internal network isolation | Tier 5 (Deployment) | Verify Let's Encrypt TLS on ports 80/443; execute port scan (`nmap`) against public VM IP verifying ports 5432, 6379, 9200, and Bull Board are not publicly exposed |
+| `DOC-19` | Configure Elasticsearch resource bounds and monitor memory consumption on target VM | Tier 5 (Deployment) | Verify `ES_JAVA_OPTS` limits heap (`-Xms512m -Xmx512m`); inspect `docker stats` under test workload to verify total memory remains within VM allocation |
+| `DOC-20` | Verify state persistence, scheduled-job recovery, and outbox reconciliation across container restarts and host VM reboot | Tier 4 (Recovery) | Schedule future email, reboot host VM (`sudo reboot`), verify full stack auto-recovers on boot and pending email delivery completes cleanly |
+| `DOC-21` | Verify outbound SMTP egress connectivity from Oracle Cloud VM | Tier 5 (Deployment) | Probe port 587/465 egress from VM (`nc -zv smtp.ethereal.email 587`); execute test send confirming OCI VCN security lists permit SMTP outbound |
 
 ### 3.12 Submission Requirements (`SUB-01` to `SUB-25`)
 
@@ -538,3 +543,97 @@ To mark any requirement in [`docs/requirements-checklist.md`](file:///d:/Work/Pr
 
 ### Failure Reporting Rule:
 If a test fails or a scenario cannot be tested due to missing credentials or unmerged code, the requirement status must remain **`In progress`** or be marked **`Blocked`** with a clear explanation of the blocker. It must **never** be marked `Verified`.
+
+---
+
+## 7. Deployment Acceptance Strategy (Planned for Phase 10 — Oracle Cloud Always Free VM)
+
+> [!IMPORTANT]
+> The verification procedures in this section represent the **Planned Deployment Verification Strategy** scheduled for execution in **Phase 10**.
+> In accordance with the AntiGravity execution protocol, **none of these deployment tests have been executed yet**, and no requirement is marked `Verified` on the basis of documentation alone. They will be executed when the application stack is deployed to the target Oracle Cloud VM in Phase 10.
+
+### 7.1 Target Architecture & Container Image Compatibility
+- **Objective:** Verify that container images and native dependencies execute natively without architecture emulation crashes on the provisioned VM (specifically for ARM64 if using an Ampere A1 instance).
+- **Procedure:**
+  1. Inspect the VM architecture: `uname -m` (assert `aarch64` for Ampere A1 or `x86_64` for AMD micro).
+  2. Inspect Docker daemon and container image architectures: `docker version` and `docker inspect <image> --format '{{.Architecture}}'`.
+  3. Verify that native Node.js addons (e.g., bcrypt, bufferutil, or utf-8-validate if present) compile and run without architecture faults.
+- **Pass Criteria:** All services start and initialize cleanly without `exec format error` or CPU emulation panics.
+
+### 7.2 Service Health, Readiness, and Private Network Boundary
+- **Objective:** Confirm all application containers are healthy and internal data stores are inaccessible from the public internet.
+- **Procedure:**
+  1. Query public HTTP/HTTPS endpoints via reverse proxy:
+     - `curl -f -k https://<vm-domain-or-ip>/health` -> HTTP 200 `{ "status": "ok" }`
+     - `curl -f -k https://<vm-domain-or-ip>/ready` -> HTTP 200 with all subsystem checks passing (PostgreSQL, Redis, Elasticsearch).
+  2. Port scan from an external machine:
+     - `nmap -Pn -p 22,80,443,3001,5432,6379,9200 <vm-public-ip>`
+  3. Direct curl attempts to internal ports:
+     - `curl --connect-timeout 5 http://<vm-public-ip>:5432` -> Connection refused or timed out.
+     - `curl --connect-timeout 5 http://<vm-public-ip>:6379` -> Connection refused or timed out.
+     - `curl --connect-timeout 5 http://<vm-public-ip>:9200` -> Connection refused or timed out.
+  4. Access Bull Board route `/admin/queues`:
+     - Unauthenticated -> HTTP 401 Unauthorized.
+     - Authenticated with basic auth and session -> HTTP 200 rendering queue statistics.
+- **Pass Criteria:** Only ports `22` (SSH), `80` (HTTP), and `443` (HTTPS) respond externally. Internal ports are completely unreachable from the public internet.
+
+### 7.3 Volume Persistence Across Container Recreation
+- **Objective:** Verify that relational records, Redis queue state, and Elasticsearch indices persist across container teardown.
+- **Procedure:**
+  1. Insert a test email record via API and verify presence in PostgreSQL and Redis.
+  2. Stop and recreate the Compose stack: `docker compose down && docker compose up -d`.
+  3. Query the API list endpoint and database directly.
+- **Pass Criteria:** PostgreSQL tables, Redis BullMQ keys, and Elasticsearch indices persist intact without data loss.
+
+### 7.4 Scheduled Job & Outbox Recovery Across Service Restarts
+- **Objective:** Verify that scheduled emails awaiting delayed delivery are not lost or duplicated when API or worker processes restart.
+- **Procedure:**
+  1. Schedule an email with a 5-minute future delay.
+  2. Forcefully kill the worker container: `docker compose kill worker`.
+  3. Wait 1 minute, then restart the worker: `docker compose up -d worker`.
+  4. Observe worker logs and PostgreSQL status.
+- **Pass Criteria:** Worker startup reconciliation claims any stranded outbox events or stalled jobs; email is dispatched via Nodemailer when the scheduled time arrives; exactly one delivery occurs.
+
+### 7.5 Full-Stack Resilience Across Host VM Reboot
+- **Objective:** Validate that the entire single-host stack recovers gracefully after a full host reboot without administrative intervention.
+- **Procedure:**
+  1. Schedule a future email via the compose UI or API.
+  2. Issue a system reboot command: `sudo reboot`.
+  3. Wait for the host VM to complete boot sequence.
+  4. Verify systemd auto-starts the Docker daemon (`docker.service`) and Compose restart policies (`restart: unless-stopped`) resume all containers.
+  5. Verify reverse proxy re-establishes TLS termination.
+  6. Verify outbox reconciliation resumes and the scheduled email delivers successfully at the intended time.
+- **Pass Criteria:** All services return to healthy status automatically; scheduled email delivers; preview URL recorded in database.
+
+### 7.6 HTTPS and Dual-Provider OAuth Callback Validation
+- **Objective:** Confirm HTTPS termination and validate Google and Slack OAuth redirect flows in the hosted environment.
+- **Procedure:**
+  1. Verify TLS certificate validity in browser (valid Let's Encrypt / TLS certificate, zero insecure warnings).
+  2. Initiate Google Sign-In on the live domain: verify redirect to Google consent screen, callback to `https://<domain>/api/auth/google/callback`, session cookie issuance (`HttpOnly; Secure; SameSite=Lax`), and redirect to dashboard.
+  3. Initiate Slack workspace connection on the live domain: verify callback to `https://<domain>/api/slack/callback` and encrypted token storage in `slack_connections`.
+- **Pass Criteria:** Both OAuth flows complete successfully without `redirect_uri_mismatch` or cookie transmission errors.
+
+### 7.7 Outbound SMTP Connectivity Verification
+- **Objective:** Validate that outbound TCP traffic to the test SMTP server is permitted through OCI Security Lists and VM firewall rules.
+- **Procedure:**
+  1. From inside the worker container or VM host: `nc -zv smtp.ethereal.email 587` (or `465`).
+  2. Execute an automated test send via the worker.
+- **Pass Criteria:** TCP connection succeeds; SMTP greeting received; email delivery succeeds and returns an Ethereal preview URL.
+
+### 7.8 Resource Consumption and Elasticsearch Heap Observation
+- **Objective:** Ensure memory and CPU consumption stay within the VM's physical limits under load, preventing Linux OOM killer invocation.
+- **Procedure:**
+  1. Schedule a representative batch (e.g., 100–500 emails).
+  2. Execute `docker stats --no-stream` and `free -m` continuously during queue processing.
+  3. Inspect Elasticsearch JVM heap usage: `curl http://localhost:9200/_nodes/stats/jvm?pretty`.
+  4. Confirm Elasticsearch heap does not exceed its configured boundary (`512MB` or `1GB`).
+  5. Inspect `dmesg -T | grep -i oom` to verify zero kernel OOM kills.
+- **Pass Criteria:** Total memory usage remains stably bounded with at least 15% headroom; zero OOM kills; zero worker panics.
+
+### 7.9 Backup Restoration Verification
+- **Objective:** Confirm database disaster recovery procedures work on the VM.
+- **Procedure:**
+  1. Execute a database backup: `docker compose exec postgres pg_dump -U postgres reachinbox_scheduler > backup_test.sql`.
+  2. Verify SQL backup file contains table definitions and data.
+  3. Verify restore procedure into a disposable temporary database: `createdb reachinbox_restore_test && psql -d reachinbox_restore_test < backup_test.sql`.
+- **Pass Criteria:** Backup and restore cycle completes cleanly with row count parity.

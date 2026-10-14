@@ -361,25 +361,38 @@ Every checklist requirement from `docs/requirements-checklist.md` is mapped to i
 
 ---
 
-### Phase 10: Production Deployment, Documentation, Demo Video, and Submission
-- **Objective:** Deploy application to a public hosting platform, execute end-to-end smoke tests, document setup and limitations in `README.md`, record the demo video, and complete the ClickUp submission form.
-- **Checklist IDs Covered:** `DOC-01`, `DOC-02`, `DOC-03`, `DOC-04`, `DOC-05`, `DOC-06`, `DOC-07`, `DOC-08`, `DOC-09`, `DOC-10`, `DOC-11`, `DOC-12`, `DOC-13`, `DOC-14`, `DOC-15`, `DOC-16`, `QA-17`, `QA-20`, `SUB-04`, `SUB-05`, `SUB-06`, `SUB-07`, `SUB-08`, `SUB-09`, `SUB-10`, `SUB-11`, `SUB-12`, `SUB-13`, `SUB-14`, `SUB-15`, `SUB-16`, `SUB-17`, `SUB-18`, `SUB-19`, `SUB-20`, `SUB-21`, `SUB-22`, `SUB-23`, `SUB-24`, `SUB-25` (40 IDs).
-- **Dependencies & Prerequisites:** Phases 1–9 complete; public cloud hosting provider (e.g. Render / Railway / Fly.io / AWS); screen recording tool.
+### Phase 10: Production Deployment (Oracle Cloud Always Free VM), Documentation, Demo Video, and Submission
+- **Objective:** Deploy full application stack to an **Oracle Cloud Infrastructure (OCI) Always Free VM** using Docker Compose fronted by an HTTPS reverse proxy, execute end-to-end smoke and resilience tests, document setup and limitations in `README.md`, record the demo video, and complete the ClickUp submission form.
+- **Checklist IDs Covered:** `DOC-01`, `DOC-02`, `DOC-03`, `DOC-04`, `DOC-05`, `DOC-06`, `DOC-07`, `DOC-08`, `DOC-09`, `DOC-10`, `DOC-11`, `DOC-12`, `DOC-13`, `DOC-14`, `DOC-15`, `DOC-16`, `DOC-17`, `DOC-18`, `DOC-19`, `DOC-20`, `DOC-21`, `QA-17`, `QA-20`, `SUB-04`, `SUB-05`, `SUB-06`, `SUB-07`, `SUB-08`, `SUB-09`, `SUB-10`, `SUB-11`, `SUB-12`, `SUB-13`, `SUB-14`, `SUB-15`, `SUB-16`, `SUB-17`, `SUB-18`, `SUB-19`, `SUB-20`, `SUB-21`, `SUB-22`, `SUB-23`, `SUB-24`, `SUB-25` (45 IDs).
+- **Dependencies & Prerequisites:** Phases 1–9 complete; provisioned Oracle Cloud Infrastructure Always Free VM (Ampere A1 ARM64 or AMD micro x86_64); registered domain name or dynamic DNS for TLS certificates; screen recording tool.
 - **Concrete Deliverables:**
-  - Production deployment of PostgreSQL, Redis, API, Worker, and Web frontend.
-  - Configured production OAuth redirect URIs for Google and Slack.
-  - Comprehensive `README.md` containing architecture, local setup instructions, env explanations, rate limiting documentation, and explicit disclosure of at-least-once SMTP limitations.
+  - Deployment-time verification of target VM's actual CPU architecture (`uname -m`), available RAM (`free -m`), disk quota (`df -h`), and OCI VCN security list ingress/egress rules.
+  - Multi-arch and ARM64 compatibility verification for container images (`postgres:16-alpine`, `redis:7-alpine`, `elasticsearch:8.x`, `node:20`) and dependencies if hosted on an Ampere A1 instance.
+  - Single-host Docker Compose deployment orchestrating PostgreSQL 16, Redis 7 (AOF enabled), Elasticsearch 8 (heap bounded to `-Xms512m -Xmx512m`), Express API, BullMQ Worker, and React web client.
+  - Reverse proxy (Nginx or Caddy) configuring public ports 80 and 443 with valid TLS certificates, proxying traffic to web and API, and strictly isolating internal ports (`5432`, `6379`, `9200`, Bull Board raw port) on a private Docker bridge network.
+  - Production server-side environment variables configured with secure permissions (`chmod 600 .env`) and exact production OAuth redirect URIs registered in Google Cloud and Slack consoles.
+  - Named Docker volume persistence for PostgreSQL, Redis, and Elasticsearch verified across container recreation.
+  - Verification of API `/health` and `/ready` endpoints against live database, Redis, and Elasticsearch.
+  - Verification of outbound SMTP connectivity from within the VM to Ethereal SMTP over port 587/465.
+  - Resilience verification testing scheduled-job and outbox recovery after container restarts and after an intentional host VM reboot (`sudo reboot`).
+  - Resource consumption monitoring under representative workload using `docker stats` to ensure memory stays within VM limits and worker concurrency remains bounded (`WORKER_CONCURRENCY`).
+  - Comprehensive `README.md` containing architecture overview, local vs. cloud setup instructions, environment variable documentation, rate limiting explanation, and explicit disclosures of single-host failure boundaries and at-least-once SMTP semantics.
   - 5-minute (or under) demo video demonstrating: scheduling, scheduled view, sent view with Ethereal preview, restart recovery, and rate limiting with Slack notification.
   - Public accessibility of demo video confirmed in incognito window.
   - Private GitHub repository verified with collaborator invitations active for `Mitrajit` and `Yadav036`.
   - All ClickUp submission form fields prepared, verified, and submitted.
 - **Verification Commands:**
+  - `[Deployment Check]` Host architecture & image compatibility: `uname -m && docker compose config`
+  - `[Deployment Check]` Port scan / network isolation: `nmap -p 5432,6379,9200 <public-vm-ip>` (assert closed/filtered)
+  - `[Deployment Check]` Outbound SMTP egress probe: `nc -zv smtp.ethereal.email 587`
+  - `[Deployment Check]` Resource consumption check: `docker stats --no-stream`
+  - `[Deployment Check]` Reboot resilience: schedule email, execute `sudo reboot`, confirm auto-restart and delivery completion after boot.
   - `[Manual / E2E Scenario]` Production smoke test: authenticate via Google on live URL, schedule email, observe delivery, test search.
   - `[Manual / E2E Scenario]` `QA-20` Multi-Provider OAuth Verification: Authenticate with real Google account and link real Slack workspace in both local development and hosted production environments, verifying live token exchanges, callback URL validity, and session persistence.
   - `[Manual Check]` Video link validation: check URL in private/incognito window without login.
   - `[Proposed Command]` Full test suite: `npm test` across all packages passes cleanly.
-- **Exit Criteria:** Live application accessible; repository code pushed; demo video recorded; ClickUp submission form completed.
-- **Critical Blockers:** Production OAuth callback domain mismatch or slow cloud DNS propagation.
+- **Exit Criteria:** Live application accessible over HTTPS on Oracle Cloud VM; repository code pushed; demo video recorded; ClickUp submission form completed.
+- **Critical Blockers:** Oracle Cloud free-tier capacity unavailability, ARM64 dependency incompatibilities, blocked outbound SMTP ports, or slow DNS propagation for TLS/OAuth.
 
 ---
 
@@ -431,6 +444,7 @@ The following architectural decisions must be adhered to throughout implementati
 | **8. Session Security & Tenant Scoping** | **Server-side session management.** Use signed/encrypted HttpOnly, Secure, SameSite session cookies with CSRF protection, strictly per `docs/architecture.md` (no JWT tokens). Every database query and Elasticsearch search query must explicitly include a `WHERE user_id = $1` clause. |
 | **9. Elasticsearch Decoupling** | **Asynchronous event indexing.** Search indexing occurs out-of-band. Elasticsearch outages must never fail or block email scheduling or SMTP delivery. A reindexing CLI script handles backfills. |
 | **10. Slack Alert Deduplication** | **Atomic window lock.** A Redis key (`slack:alert:<sender_id>:<window_hour>`) with a 1-hour TTL ensures that hitting a quota produces at most one Slack notification per sender per quota window. |
+| **11. Target Deployment (OCI Always Free VM)** | **Constrained single-host Docker Compose deployment.** Target an Oracle Cloud Always Free VM (Ampere A1 ARM64 or AMD micro). ARM64 compatibility is a requirement if using Ampere A1. Resource budgeting is mandatory—specifically capping Elasticsearch heap (`-Xms512m -Xmx512m`) to prevent OOM termination. Internal ports (5432, 6379, 9200) remain strictly isolated on a private Docker network behind an HTTPS reverse proxy (Nginx/Caddy). Outbound SMTP egress (port 587/465) must be verified through OCI security lists. Single-host volume persistence does not protect against VM loss; persistent recovery is tested across container restarts and host reboots. |
 
 ---
 
@@ -465,7 +479,7 @@ To ensure feasibility within the 48-hour timeline, planned work is targeted for 
 | **Hours 22.0 – 25.0** | Phase 7 | Elasticsearch outbox indexing consumer, tenant-scoped search API, reindexing recovery script | 3.0 hours | 25.0h |
 | **Hours 25.0 – 30.0** | Phase 8 | React dashboard, ReachInbox visual styling, composer, CSV upload, login redirect, header profile, manual UI audit | 5.0 hours | 30.0h |
 | **Hours 30.0 – 33.0** | Phase 9 | Slack OAuth, deduplicated rate-limit alerts, protected Bull Board route | 3.0 hours | 33.0h |
-| **Hours 33.0 – 36.0** | Phase 10 | Cloud deployment, README docs, <= 5 min demo video, ClickUp submission form | 3.0 hours | 36.0h |
+| **Hours 33.0 – 36.0** | Phase 10 | Oracle Cloud Always Free VM deployment (Docker Compose, HTTPS reverse proxy, ARM64 verification, reboot recovery), README docs, <= 5 min demo video, ClickUp submission form | 3.0 hours | 36.0h |
 | **Hours 36.0 – 48.0** | **Buffer** | **Dedicated Contingency Reserve** (OAuth DNS/redirects, cloud hosting setup, edge-case debugging) | **12.0 hours** | **48.0h** |
 
 ### Priority & Scope Safeguards:
