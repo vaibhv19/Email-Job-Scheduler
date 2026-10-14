@@ -40,3 +40,5 @@ Thumbs.db
 # Local test & log files
 *.log
 scratch/
+
+/reachinbox-key.pem
