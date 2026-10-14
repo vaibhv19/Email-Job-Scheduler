@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api",
+      "destination": "https://api-email-job-scheduler.vaibhv19.dev/api"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://api-email-job-scheduler.vaibhv19.dev/api/:path*"
+    }
+  ]
+}
