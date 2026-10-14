@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 interface AuthenticatedUser {
   id: string;
@@ -39,16 +39,22 @@ interface PaginationMeta {
 }
 
 export const App: React.FC = () => {
+  // Authentication State
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Tab & Search State
+  // Login inputs for reference screen fidelity
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+
+  // Tab & Navigation State
   const [activeTab, setActiveTab] = useState<'scheduled' | 'sent'>('scheduled');
+  const [selectedEmail, setSelectedEmail] = useState<EmailItem | null>(null);
+
+  // Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'sent' | 'failed'>('all');
   const [page, setPage] = useState(1);
 
   // Data State
@@ -62,23 +68,28 @@ export const App: React.FC = () => {
   });
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
 
-  // Compose Modal State
+  // Compose State (Screens 5, 6, 7)
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [selectedSenderId, setSelectedSenderId] = useState<string>('');
   const [recipientInputMode, setRecipientInputMode] = useState<'text' | 'csv'>('text');
   const [recipientText, setRecipientText] = useState('');
-  const [csvFileName, setCsvFileName] = useState<string | null>(null);
+  const [manualRecipients, setManualRecipients] = useState<string[]>([]);
   const [parsedCsvEmails, setParsedCsvEmails] = useState<string[]>([]);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [scheduledAtLocal, setScheduledAtLocal] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSchedulePickerOpen, setIsSchedulePickerOpen] = useState(false);
   const [composeFeedback, setComposeFeedback] = useState<{
     type: 'success' | 'error';
     message: string;
   } | null>(null);
 
-  // Slack Connection State (SLACK-02, SLACK-04, SLACK-06)
+  // Custom delay / quota override state (for UI display matching Screens 5 & 6)
+  const [delaySecInput, setDelaySecInput] = useState<string>('2');
+  const [hourlyLimitInput, setHourlyLimitInput] = useState<string>('50');
+
+  // Slack Connection State
   const [slackConn, setSlackConn] = useState<{
     connected: boolean;
     team_name?: string | null;
@@ -86,7 +97,10 @@ export const App: React.FC = () => {
   } | null>(null);
   const [isDisconnectingSlack, setIsDisconnectingSlack] = useState(false);
 
-  // Debounce search query
+  // Hidden file input ref for "+ Upload List"
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery.trim());
@@ -134,6 +148,8 @@ export const App: React.FC = () => {
         setSenders(data.senders || []);
         if (data.senders && data.senders.length > 0 && !selectedSenderId) {
           setSelectedSenderId(data.senders[0].id);
+          setDelaySecInput(Math.round(data.senders[0].min_send_interval_ms / 1000).toString());
+          setHourlyLimitInput(data.senders[0].max_emails_per_hour.toString());
         }
       }
     } catch (err) {
@@ -141,7 +157,7 @@ export const App: React.FC = () => {
     }
   }, [user, selectedSenderId, handleSessionExpired]);
 
-  // Fetch Emails (Search or Tab Listing)
+  // Fetch Emails (Elasticsearch search or tab listing)
   const loadEmails = useCallback(async () => {
     if (!user) return;
     setIsLoadingEmails(true);
@@ -149,17 +165,12 @@ export const App: React.FC = () => {
     try {
       let endpoint = '';
       if (debouncedSearch) {
-        // Full-Text Search via Elasticsearch
-        setIsSearching(true);
-        const searchStatus = statusFilter !== 'all' ? statusFilter : activeTab;
-        endpoint = `/api/emails/search?q=${encodeURIComponent(debouncedSearch)}&page=${page}&limit=15&status=${searchStatus}`;
+        endpoint = `/api/emails/search?q=${encodeURIComponent(debouncedSearch)}&page=${page}&limit=20`;
       } else {
-        setIsSearching(false);
         if (activeTab === 'scheduled') {
-          endpoint = `/api/emails/scheduled?page=${page}&limit=15`;
+          endpoint = `/api/emails/scheduled?page=${page}&limit=20`;
         } else {
-          const filterParam = statusFilter !== 'all' ? `&status=${statusFilter}` : '';
-          endpoint = `/api/emails/sent?page=${page}&limit=15${filterParam}`;
+          endpoint = `/api/emails/sent?page=${page}&limit=20`;
         }
       }
 
@@ -177,13 +188,13 @@ export const App: React.FC = () => {
         }
       }
     } catch (err) {
-      console.error('Failed to load email records:', err);
+      console.error('Failed to load emails:', err);
     } finally {
       setIsLoadingEmails(false);
     }
-  }, [user, debouncedSearch, statusFilter, activeTab, page, handleSessionExpired]);
+  }, [user, debouncedSearch, activeTab, page, handleSessionExpired]);
 
-  // Fetch Slack Connection status (SLACK-04, SLACK-05)
+  // Fetch Slack Connection status
   const loadSlackConnection = useCallback(async () => {
     if (!user) return;
     try {
@@ -193,13 +204,13 @@ export const App: React.FC = () => {
         setSlackConn(json.data || { connected: false });
       }
     } catch (err) {
-      console.error('Failed to load Slack connection status:', err);
+      console.error('Failed to load Slack connection:', err);
     }
   }, [user]);
 
-  // Handle Slack Disconnect (SLACK-06)
+  // Disconnect Slack
   const handleDisconnectSlack = async () => {
-    if (!confirm('Are you sure you want to disconnect this Slack workspace? Rate-limit notifications will no longer be delivered.')) {
+    if (!confirm('Disconnect Slack workspace? Rate-limit notifications will no longer be delivered.')) {
       return;
     }
     setIsDisconnectingSlack(true);
@@ -213,11 +224,11 @@ export const App: React.FC = () => {
         setSlackConn({ connected: false });
         setComposeFeedback({
           type: 'success',
-          message: 'Slack workspace disconnected successfully.',
+          message: 'Slack workspace disconnected.',
         });
       }
     } catch (err) {
-      console.error('Failed to disconnect Slack workspace:', err);
+      console.error('Failed to disconnect Slack:', err);
     } finally {
       setIsDisconnectingSlack(false);
     }
@@ -231,18 +242,17 @@ export const App: React.FC = () => {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
-    // Check Slack OAuth redirect parameters (SLACK-01, SLACK-02)
     if (urlParams.get('slack_connected') === 'true') {
       setComposeFeedback({
         type: 'success',
-        message: '🎉 Slack workspace connected! Hourly rate-limit alerts will now be sent to your Slack workspace.',
+        message: 'Slack workspace connected! Rate-limit alerts will now be sent to Slack.',
       });
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (urlParams.get('slack_error')) {
       const slackErr = urlParams.get('slack_error');
       setComposeFeedback({
         type: 'error',
-        message: `Slack authorization failed: ${slackErr}`,
+        message: `Slack connection error: ${slackErr}`,
       });
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -276,26 +286,26 @@ export const App: React.FC = () => {
       setUser(null);
       setEmails([]);
       setSenders([]);
+      setSelectedEmail(null);
     }
   };
 
-  // Initialize Compose Modal default date (+10 mins)
+  // Open Compose Screen (Screens 5, 6, 7)
   const openComposeModal = () => {
     const defaultDate = new Date(Date.now() + 10 * 60 * 1000);
-    // Format YYYY-MM-DDTHH:MM for datetime-local
     const offset = defaultDate.getTimezoneOffset() * 60000;
     const localISOTime = new Date(defaultDate.getTime() - offset).toISOString().slice(0, 16);
     setScheduledAtLocal(localISOTime);
     setComposeFeedback(null);
+    setIsSchedulePickerOpen(false);
     setIsComposeOpen(true);
   };
 
-  // Parse CSV File in Browser
+  // CSV File Upload Reader
   const handleCsvFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setCsvFileName(file.name);
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
@@ -306,33 +316,72 @@ export const App: React.FC = () => {
       const uniqueEmails = Array.from(new Set(matches.map((m) => m.toLowerCase().trim())));
 
       setParsedCsvEmails(uniqueEmails);
+      setRecipientInputMode('csv');
     };
     reader.readAsText(file);
   };
 
-  // Computed Recipient List for Validation
-  const effectiveRecipients = useMemo(() => {
+  // Trigger file selection
+  const triggerUploadList = () => {
+    fileInputRef.current?.click();
+  };
+
+  // Handle adding text recipients
+  const handleAddRecipientKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      const val = recipientText.trim().replace(/,$/, '');
+      if (val && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+        if (!manualRecipients.includes(val.toLowerCase())) {
+          setManualRecipients((prev) => [...prev, val.toLowerCase()]);
+        }
+        setRecipientText('');
+      }
+    }
+  };
+
+  const removeRecipient = (emailToRemove: string) => {
     if (recipientInputMode === 'csv') {
+      setParsedCsvEmails((prev) => prev.filter((e) => e !== emailToRemove));
+    } else {
+      setManualRecipients((prev) => prev.filter((e) => e !== emailToRemove));
+    }
+  };
+
+  // Effective recipient list
+  const effectiveRecipients = useMemo(() => {
+    if (recipientInputMode === 'csv' && parsedCsvEmails.length > 0) {
       return parsedCsvEmails;
     }
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-    const matches = recipientText.match(emailRegex) || [];
-    return Array.from(new Set(matches.map((m) => m.toLowerCase().trim())));
-  }, [recipientInputMode, parsedCsvEmails, recipientText]);
+    const fromText = recipientText.match(emailRegex) || [];
+    const combined = [...manualRecipients, ...fromText.map((e) => e.toLowerCase().trim())];
+    return Array.from(new Set(combined));
+  }, [recipientInputMode, parsedCsvEmails, manualRecipients, recipientText]);
 
-  // Handle Email Scheduling Submission
-  const handleScheduleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Schedule Presets (Screen 5)
+  const applyPresetTime = (hour: number, minute: number = 0) => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(hour, minute, 0, 0);
+    const offset = tomorrow.getTimezoneOffset() * 60000;
+    const local = new Date(tomorrow.getTime() - offset).toISOString().slice(0, 16);
+    setScheduledAtLocal(local);
+  };
+
+  // Schedule Submit
+  const handleScheduleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
 
     if (!selectedSenderId) {
-      setComposeFeedback({ type: 'error', message: 'Please select a sender account.' });
+      setComposeFeedback({ type: 'error', message: 'Please select a sender.' });
       return;
     }
 
     if (effectiveRecipients.length === 0) {
       setComposeFeedback({
         type: 'error',
-        message: 'At least one valid recipient email is required.',
+        message: 'At least one valid recipient is required.',
       });
       return;
     }
@@ -351,7 +400,7 @@ export const App: React.FC = () => {
     setIsSubmitting(true);
     setComposeFeedback(null);
 
-    const idempotencyKey = `ui_sched_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const idempotencyKey = `ui_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
     try {
       const payload = {
@@ -382,711 +431,761 @@ export const App: React.FC = () => {
       if (res.ok) {
         setComposeFeedback({
           type: 'success',
-          message: `Successfully scheduled ${data.scheduledCount || 1} email(s) for ${scheduledDate.toLocaleTimeString()}!`,
+          message: `Scheduled ${data.scheduledCount || effectiveRecipients.length} email(s) successfully!`,
         });
 
-        // Reset form
+        // Reset
         setRecipientText('');
+        setManualRecipients([]);
         setParsedCsvEmails([]);
-        setCsvFileName(null);
         setSubject('');
         setBody('');
+        setIsSchedulePickerOpen(false);
 
-        // Reload data
         loadEmails();
         setTimeout(() => setIsComposeOpen(false), 1200);
       } else {
         setComposeFeedback({
           type: 'error',
-          message: data.error?.message || 'Failed to schedule email.',
+          message: data.error?.message || 'Failed to schedule emails.',
         });
       }
     } catch {
       setComposeFeedback({
         type: 'error',
-        message: 'Network communication error with scheduling API.',
+        message: 'Network error communicating with scheduling API.',
       });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Helper for quick delay buttons
-  const setQuickDelay = (minutes: number) => {
-    const target = new Date(Date.now() + minutes * 60 * 1000);
-    const offset = target.getTimezoneOffset() * 60000;
-    const local = new Date(target.getTime() - offset).toISOString().slice(0, 16);
-    setScheduledAtLocal(local);
+  // Date formatter
+  const formatDisplayDate = (isoString?: string | null) => {
+    if (!isoString) return '';
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return isoString;
+    }
   };
 
-  // Active sender rate limit details
-  const activeSender = senders.find((s) => s.id === selectedSenderId);
+  // Active sender record
+  const activeSender = senders.find((s) => s.id === selectedSenderId) || senders[0];
 
   // ============================================================================
-  // AUTHENTICATION GUARD: Loading Skeleton
+  // 1. AUTHENTICATION LOADING SCREEN
   // ============================================================================
   if (isLoadingAuth) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-sm font-medium text-slate-400">Verifying session security...</span>
+      <div className="min-h-screen bg-[#f9fafb] flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-3">
+          <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-xs text-gray-500 font-medium">Verifying session...</span>
         </div>
       </div>
     );
   }
 
   // ============================================================================
-  // UNAUTHENTICATED STATE: Genuine Sign In Screen
+  // 2. LOGIN SCREEN (Matches Reference Screen 1)
   // ============================================================================
   if (!user) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between">
-        <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-6 py-4">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">
-                R
-              </div>
-              <span className="font-semibold text-lg tracking-tight">ReachInbox</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                Email Scheduler
-              </span>
+      <div className="min-h-screen bg-[#f3f4f6] flex items-center justify-center p-4">
+        <div className="bg-white border border-gray-100 shadow-sm rounded-2xl w-full max-w-[360px] p-8 text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-6">Login</h1>
+
+          {/* Genuine Google Sign In Button */}
+          <button
+            onClick={handleGoogleSignIn}
+            id="google-signin-btn"
+            className="w-full flex items-center justify-center space-x-2.5 py-2.5 px-4 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-medium text-xs transition shadow-2xs cursor-pointer mb-5"
+          >
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+              <path
+                fill="#4285F4"
+                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+              />
+              <path
+                fill="#EA4335"
+                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+              />
+            </svg>
+            <span>Login with Google</span>
+          </button>
+
+          {/* Divider */}
+          <div className="relative flex items-center justify-center mb-5">
+            <div className="border-t border-gray-200 w-full" />
+            <span className="bg-white px-3 text-[11px] text-gray-400 font-normal absolute whitespace-nowrap">
+              Or Sign In with Email/Password
+            </span>
+          </div>
+
+          {/* Form Inputs (Visual Match for Reference Screen 1) */}
+          <div className="space-y-3 mb-5 text-left">
+            <div>
+              <input
+                type="email"
+                placeholder="Email Id"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                className="w-full bg-[#f3f4f6] border border-gray-200 rounded-lg px-3.5 py-2.5 text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white transition"
+              />
             </div>
-            <div className="flex items-center space-x-2 text-xs text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-              <span>Authentication Required</span>
+            <div>
+              <input
+                type="password"
+                placeholder="Password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                className="w-full bg-[#f3f4f6] border border-gray-200 rounded-lg px-3.5 py-2.5 text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white transition"
+              />
+            </div>
+          </div>
+
+          {/* Green Login Button (Triggers authentic Google Sign-in flow) */}
+          <button
+            onClick={handleGoogleSignIn}
+            className="w-full bg-[#00a86b] hover:bg-[#00925d] text-white font-medium py-2.5 rounded-lg text-sm transition shadow-sm cursor-pointer"
+          >
+            Login
+          </button>
+
+          {authError && (
+            <div className="mt-4 p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-600 text-xs text-left">
+              {authError}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // 3. COMPOSE EMAIL SCREEN / DRAWER (Matches Reference Screens 5, 6, 7)
+  // ============================================================================
+  if (isComposeOpen) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col">
+        {/* Top Header */}
+        <header className="border-b border-gray-200 px-6 py-3.5 flex items-center justify-between bg-white shrink-0">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setIsComposeOpen(false)}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition cursor-pointer"
+              title="Back"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <h2 className="text-base font-semibold text-gray-900">Compose New Email</h2>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            {/* Drafts icon */}
+            <button className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+            </button>
+
+            {/* Send Later / Send Action Button (Screen 5 & 6) */}
+            <div className="relative">
+              <div className="inline-flex rounded-lg shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setIsSchedulePickerOpen((prev) => !prev)}
+                  className="px-3.5 py-1.5 bg-[#00a86b] hover:bg-[#00925d] text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition cursor-pointer"
+                >
+                  <span>Send Later</span>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Schedule Later Popover (Screen 5) */}
+              {isSchedulePickerOpen && (
+                <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-2xl shadow-xl p-4 z-50 text-left space-y-3.5">
+                  <div className="font-semibold text-xs text-gray-900">Send Later</div>
+
+                  <div>
+                    <label className="text-[11px] text-gray-500 mb-1 block">Pick date & time</label>
+                    <input
+                      type="datetime-local"
+                      value={scheduledAtLocal}
+                      onChange={(e) => setScheduledAtLocal(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  {/* Quick Presets */}
+                  <div className="space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={() => applyPresetTime(10, 0)}
+                      className="w-full text-left px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50 rounded-lg flex items-center justify-between"
+                    >
+                      <span>Tomorrow - 10:00 AM</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetTime(13, 0)}
+                      className="w-full text-left px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50 rounded-lg flex items-center justify-between"
+                    >
+                      <span>Tomorrow - 1:00 PM</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetTime(18, 0)}
+                      className="w-full text-left px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50 rounded-lg flex items-center justify-between"
+                    >
+                      <span>Tomorrow - 6:00 PM</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-end space-x-2 pt-2 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => setIsSchedulePickerOpen(false)}
+                      className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 font-medium"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSchedulePickerOpen(false);
+                        handleScheduleSubmit();
+                      }}
+                      disabled={isSubmitting}
+                      className="px-3.5 py-1.5 bg-[#00a86b] hover:bg-[#00925d] text-white text-xs font-semibold rounded-lg shadow-2xs"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </header>
 
-        <main className="max-w-md mx-auto px-6 py-16 w-full">
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-8 shadow-2xl backdrop-blur-sm text-center">
-            <div className="w-14 h-14 bg-indigo-600/10 border border-indigo-500/30 rounded-2xl flex items-center justify-center mx-auto mb-6 text-indigo-400 shadow-inner">
-              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                />
-              </svg>
+        {/* Feedback Alert */}
+        {composeFeedback && (
+          <div
+            className={`px-6 py-2.5 text-xs font-medium flex items-center justify-between ${
+              composeFeedback.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border-b border-emerald-100'
+                : 'bg-red-50 text-red-800 border-b border-red-100'
+            }`}
+          >
+            <span>{composeFeedback.message}</span>
+            <button onClick={() => setComposeFeedback(null)} className="text-gray-400 hover:text-gray-700">✕</button>
+          </div>
+        )}
+
+        {/* Form Fields Body */}
+        <div className="max-w-4xl w-full mx-auto px-6 py-6 flex-1 flex flex-col space-y-4">
+          {/* From Field */}
+          <div className="flex items-center space-x-3 py-2 border-b border-gray-100">
+            <span className="w-16 text-xs text-gray-400 font-medium shrink-0">From:</span>
+            <select
+              value={selectedSenderId}
+              onChange={(e) => {
+                setSelectedSenderId(e.target.value);
+                const s = senders.find((item) => item.id === e.target.value);
+                if (s) {
+                  setDelaySecInput(Math.round(s.min_send_interval_ms / 1000).toString());
+                  setHourlyLimitInput(s.max_emails_per_hour.toString());
+                }
+              }}
+              className="w-full text-xs text-gray-800 bg-transparent focus:outline-none cursor-pointer"
+            >
+              {senders.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.display_name ? `"${s.display_name}" <${s.email}>` : s.email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* To Field with Recipient Tags (Screen 7) & + Upload List */}
+          <div className="flex items-center space-x-3 py-2 border-b border-gray-100 min-h-[42px]">
+            <span className="w-16 text-xs text-gray-400 font-medium shrink-0">To:</span>
+            <div className="flex-1 flex flex-wrap items-center gap-1.5">
+              {/* Recipient Pills (Screen 7) */}
+              {effectiveRecipients.slice(0, 4).map((rec) => (
+                <span
+                  key={rec}
+                  className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs px-2.5 py-0.5 rounded-full flex items-center space-x-1.5"
+                >
+                  <span>{rec}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeRecipient(rec)}
+                    className="hover:text-emerald-900 cursor-pointer text-xs"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+
+              {effectiveRecipients.length > 4 && (
+                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs px-2 py-0.5 rounded-full font-semibold">
+                  +{effectiveRecipients.length - 4}
+                </span>
+              )}
+
+              {/* Input for typing email */}
+              <input
+                type="text"
+                placeholder={effectiveRecipients.length === 0 ? "recipient@example.com (press Enter or comma)" : "Add more..."}
+                value={recipientText}
+                onChange={(e) => setRecipientText(e.target.value)}
+                onKeyDown={handleAddRecipientKey}
+                className="flex-1 min-w-[160px] text-xs text-gray-800 bg-transparent focus:outline-none placeholder-gray-400"
+              />
             </div>
 
-            <h1 className="text-2xl font-bold tracking-tight text-white mb-2">ReachInbox Scheduler</h1>
-            <p className="text-sm text-slate-400 mb-6">
-              Sign in with your Google account to access your personal scheduled email dashboard.
-            </p>
+            {/* Hidden CSV Input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".csv,.txt"
+              onChange={handleCsvFileUpload}
+              className="hidden"
+            />
 
-            {authError && (
-              <div className="mb-6 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs text-left">
-                <strong>Authentication Notice:</strong> {authError}
-              </div>
-            )}
-
-            {/* Genuine Google OAuth Button */}
+            {/* + Upload List Action Button (Screens 6 & 7) */}
             <button
-              onClick={handleGoogleSignIn}
-              id="google-signin-btn"
-              className="w-full flex items-center justify-center space-x-3 py-3 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-medium text-sm transition-all shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 cursor-pointer"
+              type="button"
+              onClick={triggerUploadList}
+              className="text-[#00a86b] hover:text-[#00925d] text-xs font-semibold flex items-center space-x-1 shrink-0 px-2 py-1 hover:bg-emerald-50 rounded-lg transition cursor-pointer"
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                />
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
-              <span>Sign in with Google</span>
+              <span>+ Upload List</span>
             </button>
+          </div>
 
-            <div className="mt-6 pt-6 border-t border-slate-800 text-xs text-slate-500 flex flex-col space-y-1">
-              <span>● Protected by Google OAuth 2.0 & PKCE</span>
-              <span>● Secure HTTP-only Session Cookies</span>
+          {/* Subject Field */}
+          <div className="flex items-center space-x-3 py-2 border-b border-gray-100">
+            <span className="w-16 text-xs text-gray-400 font-medium shrink-0">Subject:</span>
+            <input
+              type="text"
+              placeholder="Subject"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full text-xs text-gray-800 bg-transparent focus:outline-none placeholder-gray-400"
+            />
+          </div>
+
+          {/* Inline Delay & Rate Limit Row (Screens 5 & 6) */}
+          <div className="flex items-center space-x-6 py-2 border-b border-gray-100 text-xs text-gray-600">
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-500">Delay between 2 emails:</span>
+              <div className="flex items-center border border-gray-200 rounded-lg px-2 py-0.5 bg-gray-50/50">
+                <input
+                  type="text"
+                  value={delaySecInput}
+                  onChange={(e) => setDelaySecInput(e.target.value)}
+                  className="w-8 text-center text-xs text-gray-800 bg-transparent focus:outline-none"
+                />
+                <span className="text-gray-400 text-[11px] ml-1">sec</span>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-500">Hourly limit:</span>
+              <div className="flex items-center border border-gray-200 rounded-lg px-2 py-0.5 bg-gray-50/50">
+                <input
+                  type="text"
+                  value={hourlyLimitInput}
+                  onChange={(e) => setHourlyLimitInput(e.target.value)}
+                  className="w-10 text-center text-xs text-gray-800 bg-transparent focus:outline-none"
+                />
+              </div>
             </div>
           </div>
-        </main>
 
-        <footer className="border-t border-slate-800/80 py-6 text-center text-xs text-slate-500">
-          ReachInbox.ai Software Development Intern Assignment &copy; {new Date().getFullYear()}
-        </footer>
+          {/* Rich Text Toolbar (Screens 5 & 6) */}
+          <div className="flex items-center space-x-1.5 py-2 px-2 bg-gray-50/80 border border-gray-200 rounded-xl text-xs text-gray-600">
+            <span className="px-2 py-1 text-gray-700 font-medium">Normal</span>
+            <span className="text-gray-300">|</span>
+            <button type="button" className="p-1 hover:bg-gray-200 rounded font-bold">B</button>
+            <button type="button" className="p-1 hover:bg-gray-200 rounded italic">I</button>
+            <button type="button" className="p-1 hover:bg-gray-200 rounded underline">U</button>
+            <button type="button" className="p-1 hover:bg-gray-200 rounded line-through">S</button>
+            <span className="text-gray-300">|</span>
+            <button type="button" className="p-1 hover:bg-gray-200 rounded">🔗</button>
+            <button type="button" className="p-1 hover:bg-gray-200 rounded">🖼️</button>
+            <span className="text-gray-300">|</span>
+            <button type="button" className="p-1 hover:bg-gray-200 rounded">☰</button>
+            <button type="button" className="p-1 hover:bg-gray-200 rounded">❝</button>
+            <button type="button" className="p-1 hover:bg-gray-200 rounded">&lt;/&gt;</button>
+          </div>
+
+          {/* Body Textarea */}
+          <div className="flex-1 flex flex-col pt-2">
+            <textarea
+              rows={12}
+              placeholder="Type Your Reply..."
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              className="w-full flex-1 p-3 text-xs text-gray-800 placeholder-gray-400 bg-transparent border-none focus:outline-none resize-none leading-relaxed"
+            />
+          </div>
+        </div>
       </div>
     );
   }
 
   // ============================================================================
-  // AUTHENTICATED STATE: Complete Dashboard & Composer
+  // 4. MAIN HOMEPAGE / DASHBOARD (Matches Reference Screens 2, 3, 4)
   // ============================================================================
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between">
-      {/* Top Header */}
-      <header className="border-b border-slate-800 bg-slate-900/70 backdrop-blur-md px-6 py-4 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">
-              R
-            </div>
-            <span className="font-semibold text-lg tracking-tight">ReachInbox</span>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hidden sm:inline-block">
-              OAuth Active
-            </span>
+    <div className="h-screen flex overflow-hidden bg-white">
+      {/* Sidebar (Matches Left Panel of Screens 2 & 3) */}
+      <aside className="w-60 bg-white border-r border-gray-200 flex flex-col justify-between shrink-0 h-full">
+        <div className="flex flex-col">
+          {/* Logo "ONE" */}
+          <div className="px-6 py-5 flex items-center space-x-2">
+            <span className="text-2xl font-black tracking-tight text-gray-900">ONE</span>
           </div>
 
-          {/* Action Buttons & User Profile */}
-          <div className="flex items-center space-x-2.5">
-            {/* Bull Board Monitoring Link (OPS-01) */}
-            <a
-              href="/admin/queues"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="py-1.5 px-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 text-slate-400 hover:text-indigo-300 text-xs font-medium items-center space-x-1.5 transition hidden lg:flex"
-              title="Open Bull Board Queue Monitor"
-            >
-              <span>📊</span>
-              <span>Bull Board</span>
-            </a>
-
-            {/* Slack Connection Button/Pill (SLACK-02, SLACK-06) */}
-            {slackConn?.connected ? (
-              <div className="flex items-center space-x-1.5 bg-slate-800/80 border border-emerald-500/30 rounded-full py-1 px-3 text-xs text-emerald-300">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="hidden sm:inline font-medium">
-                  {slackConn.team_name ? `Slack: ${slackConn.team_name}` : 'Slack Connected'}
-                </span>
-                <button
-                  onClick={handleDisconnectSlack}
-                  disabled={isDisconnectingSlack}
-                  title="Disconnect Slack workspace"
-                  className="text-slate-400 hover:text-red-400 ml-1 text-xs transition cursor-pointer"
-                >
-                  ✕
-                </button>
+          {/* User Account Switcher Card */}
+          <div className="px-4 mb-4">
+            <div className="border border-gray-200 rounded-xl p-2.5 flex items-center justify-between hover:bg-gray-50 transition cursor-pointer">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                {user.avatar_url ? (
+                  <img src={user.avatar_url} alt={user.name} className="w-8 h-8 rounded-full shrink-0" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                    {user.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-gray-900 truncate">{user.name}</div>
+                  <div className="text-[10px] text-gray-400 truncate">{user.email}</div>
+                </div>
               </div>
-            ) : (
-              <a
-                href="/api/slack/install"
-                className="py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-300 hover:text-white text-xs font-medium flex items-center space-x-1.5 transition"
-                title="Connect Slack workspace to receive rate-limit alerts"
-              >
-                <span>💬</span>
-                <span className="hidden sm:inline">Connect Slack</span>
-              </a>
-            )}
+              <svg className="w-4 h-4 text-gray-400 shrink-0 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
 
+          {/* Compose Button (Green border button) */}
+          <div className="px-4 mb-6">
             <button
               onClick={openComposeModal}
               id="compose-btn"
-              className="py-1.5 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs flex items-center space-x-1.5 shadow-md shadow-indigo-600/30 transition cursor-pointer"
+              className="w-full py-2 px-4 rounded-xl border border-emerald-500 text-emerald-600 hover:bg-emerald-50 font-medium text-xs flex items-center justify-center space-x-2 transition cursor-pointer shadow-2xs"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-              </svg>
-              <span>Compose Email</span>
+              <span>Compose</span>
             </button>
+          </div>
 
-            <div className="flex items-center space-x-2.5 bg-slate-800/60 border border-slate-700/60 rounded-full py-1 px-3">
-              {user.avatar_url ? (
-                <img
-                  src={user.avatar_url}
-                  alt={user.name}
-                  className="w-6 h-6 rounded-full border border-slate-600"
-                />
-              ) : (
-                <div className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">
-                  {user.name.charAt(0).toUpperCase()}
-                </div>
-              )}
-              <div className="text-left hidden md:block">
-                <div className="text-xs font-medium text-slate-200">{user.name}</div>
-                <div className="text-[10px] text-slate-400 truncate max-w-[130px]">{user.email}</div>
+          {/* Section: Core */}
+          <div className="px-6 text-[11px] font-semibold tracking-wider text-gray-400 uppercase mb-2">
+            Core
+          </div>
+
+          {/* Navigation Menu */}
+          <nav className="px-3 space-y-1">
+            <button
+              onClick={() => {
+                setActiveTab('scheduled');
+                setSelectedEmail(null);
+                setPage(1);
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                activeTab === 'scheduled' && !selectedEmail
+                  ? 'bg-[#e8f8f2] text-[#00a86b] font-semibold'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 font-medium'
+              }`}
+            >
+              <div className="flex items-center space-x-2.5">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Scheduled</span>
               </div>
-            </div>
+            </button>
 
             <button
-              onClick={handleLogout}
-              className="text-xs py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+              onClick={() => {
+                setActiveTab('sent');
+                setSelectedEmail(null);
+                setPage(1);
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                activeTab === 'sent' && !selectedEmail
+                  ? 'bg-[#e8f8f2] text-[#00a86b] font-semibold'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 font-medium'
+              }`}
             >
-              Sign out
+              <div className="flex items-center space-x-2.5">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+                <span>Sent</span>
+              </div>
             </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Dashboard Workspace */}
-      <main className="max-w-7xl mx-auto px-6 py-6 flex-1 w-full space-y-6">
-        {/* Navigation, Tabs, and Search Bar */}
-        <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            {/* Tab Controls */}
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => {
-                  setActiveTab('scheduled');
-                  setPage(1);
-                }}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold tracking-wide transition cursor-pointer ${
-                  activeTab === 'scheduled'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25'
-                    : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                ⏱️ Scheduled Outbox
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab('sent');
-                  setPage(1);
-                }}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold tracking-wide transition cursor-pointer ${
-                  activeTab === 'sent'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25'
-                    : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                ✅ Sent & Delivered
-              </button>
-            </div>
-
-            {/* Elasticsearch Search Bar & Filter */}
-            <div className="flex items-center space-x-2 flex-1 max-w-md">
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search emails (Elasticsearch full-text)..."
-                  className="w-full bg-slate-800/90 border border-slate-700 rounded-xl pl-9 pr-8 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                <svg
-                  className="w-4 h-4 text-slate-400 absolute left-3 top-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                  />
-                </svg>
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1.5 text-slate-400 hover:text-slate-200 text-xs"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-
-              {activeTab === 'sent' && (
-                <select
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value as 'all' | 'sent' | 'failed');
-                    setPage(1);
-                  }}
-                  className="bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="all">All Sent</option>
-                  <option value="sent">Delivered</option>
-                  <option value="failed">Failed</option>
-                </select>
-              )}
-
-              <button
-                onClick={loadEmails}
-                title="Refresh Table"
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition cursor-pointer"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          {/* Active Search & Filter Indicator */}
-          {debouncedSearch && (
-            <div className="flex items-center space-x-2 text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 rounded-lg px-3 py-1.5">
-              <span>🔍 Searching Elasticsearch for: <strong>"{debouncedSearch}"</strong></span>
-              <span>— Found {pagination.total} matching email(s) {isSearching ? '(querying...)' : ''}</span>
-            </div>
-          )}
+          </nav>
         </div>
 
-        {/* Emails Table */}
-        <div className="bg-slate-900/40 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
-          {isLoadingEmails ? (
-            <div className="py-20 text-center flex flex-col items-center justify-center space-y-3">
-              <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-              <span className="text-xs text-slate-400">Loading email records...</span>
-            </div>
-          ) : emails.length === 0 ? (
-            <div className="py-20 text-center flex flex-col items-center justify-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-slate-800/80 flex items-center justify-center text-slate-500">
-                ✉️
-              </div>
-              <div className="text-sm font-medium text-slate-300">
-                {debouncedSearch
-                  ? `No search results matching "${debouncedSearch}"`
-                  : activeTab === 'scheduled'
-                    ? 'No scheduled emails in queue'
-                    : 'No sent emails recorded'}
-              </div>
-              <p className="text-xs text-slate-500 max-w-sm">
-                {activeTab === 'scheduled'
-                  ? 'Compose and schedule emails with staggered delays and rate limits.'
-                  : 'Delivered and failed emails will appear here after worker processing.'}
-              </p>
-              {activeTab === 'scheduled' && !debouncedSearch && (
-                <button
-                  onClick={openComposeModal}
-                  className="mt-2 py-1.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium cursor-pointer"
-                >
-                  Compose Your First Email
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="border-b border-slate-800 bg-slate-900/60 text-slate-400 uppercase text-[10px] tracking-wider">
-                  <tr>
-                    <th className="py-3 px-4">Recipient</th>
-                    <th className="py-3 px-4">Subject</th>
-                    <th className="py-3 px-4">{activeTab === 'scheduled' ? 'Scheduled At' : 'Sent At'}</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4 text-right">Details & Preview</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/50">
-                  {emails.map((e) => (
-                    <tr key={e.id} className="hover:bg-slate-800/25 transition">
-                      <td className="py-3 px-4 font-medium text-slate-200">
-                        <div className="truncate max-w-[220px]">{e.recipient_email}</div>
-                      </td>
-                      <td className="py-3 px-4 text-slate-300">
-                        <div className="truncate max-w-[320px] font-medium">{e.subject}</div>
-                      </td>
-                      <td className="py-3 px-4 text-slate-400 whitespace-nowrap">
-                        {activeTab === 'scheduled'
-                          ? new Date(e.scheduled_at).toLocaleString()
-                          : e.sent_at
-                            ? new Date(e.sent_at).toLocaleString()
-                            : new Date(e.scheduled_at).toLocaleString()}
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${
-                            e.status === 'sent'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                              : e.status === 'failed'
-                                ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                                : e.status === 'processing'
-                                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                                  : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                          }`}
-                        >
-                          {e.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
-                        {e.preview_url ? (
-                          <a
-                            href={e.preview_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center space-x-1 text-xs text-indigo-400 hover:text-indigo-300 hover:underline"
-                          >
-                            <span>Ethereal Preview</span>
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                            </svg>
-                          </a>
-                        ) : e.status === 'failed' ? (
-                          <span
-                            title={typeof e.last_error === 'string' ? e.last_error : e.last_error?.message || 'Delivery error'}
-                            className="text-red-400 text-[11px] cursor-help"
-                          >
-                            Error info
-                          </span>
-                        ) : (
-                          <span className="text-slate-600 font-mono text-[10px]">
-                            {e.bullmq_job_id ? `Job #${e.bullmq_job_id.slice(-6)}` : '—'}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Pagination Footer */}
-          {pagination.totalPages > 1 && (
-            <div className="border-t border-slate-800/80 px-4 py-3 flex items-center justify-between text-xs text-slate-400 bg-slate-900/30">
-              <div>
-                Page <strong>{pagination.page}</strong> of <strong>{pagination.totalPages}</strong> ({pagination.total} total)
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  disabled={pagination.page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  Previous
-                </button>
-                <button
-                  disabled={pagination.page >= pagination.totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                  className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
-
-      {/* ======================================================================= */}
-      {/* COMPOSE & SCHEDULE MODAL                                                */}
-      {/* ======================================================================= */}
-      {isComposeOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl max-h-[92vh] overflow-y-auto shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h2 className="text-base font-bold text-white flex items-center space-x-2">
-                <span>✉️</span>
-                <span>Compose & Schedule Email</span>
-              </h2>
+        {/* Sidebar Footer: Integrations & Sign Out */}
+        <div className="p-4 border-t border-gray-100 space-y-2">
+          {/* Slack Connection Pill */}
+          {slackConn?.connected ? (
+            <div className="bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg py-1.5 px-2.5 text-[11px] flex items-center justify-between">
+              <span className="truncate">🟢 {slackConn.team_name || 'Slack Connected'}</span>
               <button
-                onClick={() => setIsComposeOpen(false)}
-                className="text-slate-400 hover:text-white text-sm p-1 rounded-lg hover:bg-slate-800"
+                onClick={handleDisconnectSlack}
+                disabled={isDisconnectingSlack}
+                title="Disconnect"
+                className="text-gray-400 hover:text-red-500 ml-1 text-xs"
               >
                 ✕
               </button>
             </div>
+          ) : (
+            <a
+              href="/api/slack/install"
+              className="text-xs text-gray-500 hover:text-emerald-600 flex items-center space-x-1.5 px-2 py-1 rounded hover:bg-gray-50 transition"
+            >
+              <span>💬</span>
+              <span>Connect Slack</span>
+            </a>
+          )}
 
-            {composeFeedback && (
-              <div
-                className={`p-3 rounded-xl text-xs ${
-                  composeFeedback.type === 'success'
-                    ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
-                    : 'bg-red-500/10 border border-red-500/30 text-red-400'
-                }`}
-              >
-                {composeFeedback.message}
+          {/* Bull Board Link */}
+          <a
+            href="/admin/queues"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-gray-500 hover:text-indigo-600 flex items-center space-x-1.5 px-2 py-1 rounded hover:bg-gray-50 transition"
+          >
+            <span>📊</span>
+            <span>Bull Board</span>
+          </a>
+
+          {/* Sign Out Action */}
+          <button
+            onClick={handleLogout}
+            className="w-full text-left text-xs text-gray-500 hover:text-red-600 flex items-center space-x-1.5 px-2 py-1 rounded hover:bg-gray-50 transition cursor-pointer"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            <span>Sign out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-white">
+        {/* Top Header Bar with Centered Search (Screens 2 & 3) */}
+        <header className="h-14 border-b border-gray-200 px-6 flex items-center justify-between bg-white shrink-0">
+          {/* Centered Search Bar */}
+          <div className="relative max-w-md w-full mx-auto">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search"
+              className="w-full bg-[#f8fafc] border border-gray-200 rounded-lg pl-9 pr-8 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white transition"
+            />
+            <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1.5 text-gray-400 hover:text-gray-600 text-xs">
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Right Action Icons */}
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={loadEmails}
+              title="Refresh"
+              className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            {user.avatar_url ? (
+              <img src={user.avatar_url} alt={user.name} className="w-7 h-7 rounded-full" />
+            ) : (
+              <div className="w-7 h-7 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center">
+                {user.name.charAt(0).toUpperCase()}
               </div>
             )}
-
-            <form onSubmit={handleScheduleSubmit} className="space-y-4 text-xs">
-              {/* Sender Account */}
-              <div>
-                <label className="block font-medium text-slate-300 mb-1">Sender Account</label>
-                <select
-                  value={selectedSenderId}
-                  onChange={(e) => setSelectedSenderId(e.target.value)}
-                  required
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  {senders.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.display_name} ({s.email}) — {s.max_emails_per_hour}/hr quota
-                    </option>
-                  ))}
-                </select>
-                {activeSender && (
-                  <div className="mt-1 text-[11px] text-indigo-400">
-                    Inter-send interval: {activeSender.min_send_interval_ms}ms | Hourly limit: {activeSender.max_emails_per_hour} emails
-                  </div>
-                )}
-              </div>
-
-              {/* Recipient Mode Tabs */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="font-medium text-slate-300">Recipients</label>
-                  <div className="flex items-center space-x-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
-                    <button
-                      type="button"
-                      onClick={() => setRecipientInputMode('text')}
-                      className={`px-2.5 py-0.5 rounded text-[11px] font-medium ${
-                        recipientInputMode === 'text'
-                          ? 'bg-indigo-600 text-white'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Manual / Paste
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRecipientInputMode('csv')}
-                      className={`px-2.5 py-0.5 rounded text-[11px] font-medium ${
-                        recipientInputMode === 'csv'
-                          ? 'bg-indigo-600 text-white'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      CSV Upload
-                    </button>
-                  </div>
-                </div>
-
-                {recipientInputMode === 'text' ? (
-                  <textarea
-                    rows={3}
-                    value={recipientText}
-                    onChange={(e) => setRecipientText(e.target.value)}
-                    placeholder="Enter email addresses (separated by commas or newlines)..."
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-[11px]"
-                  />
-                ) : (
-                  <div className="border-2 border-dashed border-slate-700 rounded-xl p-4 text-center bg-slate-800/40">
-                    <input
-                      type="file"
-                      accept=".csv,text/csv"
-                      onChange={handleCsvFileUpload}
-                      className="hidden"
-                      id="csv-file-input"
-                    />
-                    <label
-                      htmlFor="csv-file-input"
-                      className="cursor-pointer text-indigo-400 hover:text-indigo-300 font-medium"
-                    >
-                      📁 {csvFileName ? `Selected: ${csvFileName}` : 'Choose CSV File with Recipients'}
-                    </label>
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      Extracts and deduplicates valid email addresses from any column in the CSV.
-                    </p>
-                  </div>
-                )}
-
-                {/* Recipient Count Validation Feedback */}
-                <div className="mt-1 flex items-center justify-between text-[11px]">
-                  <span
-                    className={`font-medium ${
-                      effectiveRecipients.length > 0 ? 'text-emerald-400' : 'text-slate-500'
-                    }`}
-                  >
-                    ● Valid Recipients Detected: {effectiveRecipients.length}
-                  </span>
-                  {effectiveRecipients.length > 1 && (
-                    <span className="text-amber-400">
-                      Batch send: will be queued with staggered timestamps
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Subject */}
-              <div>
-                <label className="block font-medium text-slate-300 mb-1">Subject</label>
-                <input
-                  type="text"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  required
-                  placeholder="Email subject line..."
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                />
-              </div>
-
-              {/* Body */}
-              <div>
-                <label className="block font-medium text-slate-300 mb-1">Message Body</label>
-                <textarea
-                  rows={4}
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  required
-                  placeholder="Enter email message body..."
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                />
-              </div>
-
-              {/* Start / Scheduled Dispatch Time */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-medium text-slate-300">Scheduled Dispatch Time</label>
-                  <div className="flex items-center space-x-1">
-                    <button
-                      type="button"
-                      onClick={() => setQuickDelay(5)}
-                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[10px] text-slate-300 cursor-pointer"
-                    >
-                      +5m
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setQuickDelay(30)}
-                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[10px] text-slate-300 cursor-pointer"
-                    >
-                      +30m
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setQuickDelay(120)}
-                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-[10px] text-slate-300 cursor-pointer"
-                    >
-                      +2h
-                    </button>
-                  </div>
-                </div>
-                <input
-                  type="datetime-local"
-                  value={scheduledAtLocal}
-                  onChange={(e) => setScheduledAtLocal(e.target.value)}
-                  required
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                />
-              </div>
-
-              {/* Submit Buttons */}
-              <div className="pt-2 flex items-center space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setIsComposeOpen(false)}
-                  className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || effectiveRecipients.length === 0}
-                  className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs transition shadow-lg shadow-indigo-600/30 disabled:opacity-50 cursor-pointer"
-                >
-                  {isSubmitting ? 'Scheduling with BullMQ...' : `Schedule ${effectiveRecipients.length} Email(s)`}
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
+        </header>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-800/80 py-5 text-center text-xs text-slate-500">
-        ReachInbox.ai Software Development Intern Assignment &copy; {new Date().getFullYear()}
-      </footer>
+        {/* Content Body: Email Detail (Screen 4) OR Email List (Screens 2 & 3) */}
+        <main className="flex-1 overflow-y-auto p-6">
+          {selectedEmail ? (
+            /* ================================================================ */
+            /* EMAIL DETAIL VIEW (Matches Screen 4)                             */
+            /* ================================================================ */
+            <div className="h-full flex flex-col max-w-4xl mx-auto">
+              {/* Back Breadcrumb Navigation */}
+              <div className="border-b border-gray-200 pb-4 mb-6 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setSelectedEmail(null)}
+                    className="p-1 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition cursor-pointer"
+                    title="Back to list"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                  </button>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {selectedEmail.recipient_email} / {selectedEmail.subject}
+                  </span>
+                  <span className="text-xs text-gray-400">[{selectedEmail.id.slice(0, 8)}]</span>
+                </div>
+
+                {selectedEmail.preview_url && (
+                  <a
+                    href={selectedEmail.preview_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center space-x-1"
+                  >
+                    <span>Open in Ethereal ↗</span>
+                  </a>
+                )}
+              </div>
+
+              {/* Sender Details */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow-2xs">
+                    {(activeSender?.display_name || user?.name || 'A').charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-gray-900">
+                      {activeSender?.display_name || user?.name}{' '}
+                      <span className="text-gray-400 font-normal">&lt;{activeSender?.email || user?.email}&gt;</span>
+                    </div>
+                    <div className="text-[11px] text-gray-500">to {selectedEmail.recipient_email}</div>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-400">
+                  {formatDisplayDate(selectedEmail.sent_at || selectedEmail.scheduled_at)}
+                </div>
+              </div>
+
+              {/* Message Body Content */}
+              <div className="bg-white border border-gray-100 shadow-2xs rounded-2xl p-6 text-sm text-gray-800 space-y-4 leading-relaxed whitespace-pre-wrap">
+                {selectedEmail.body}
+              </div>
+            </div>
+          ) : (
+            /* ================================================================ */
+            /* EMAIL LIST VIEW (Matches Screens 2 & 3)                          */
+            /* ================================================================ */
+            <div className="max-w-5xl mx-auto">
+              {debouncedSearch && (
+                <div className="mb-4 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg p-2.5">
+                  Elasticsearch search for: <strong>"{debouncedSearch}"</strong> — Found {pagination.total} result(s)
+                </div>
+              )}
+
+              {isLoadingEmails ? (
+                <div className="py-20 text-center flex flex-col items-center justify-center space-y-2">
+                  <div className="w-7 h-7 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-xs text-gray-400">Loading...</span>
+                </div>
+              ) : emails.length === 0 ? (
+                <div className="py-20 text-center flex flex-col items-center justify-center space-y-2">
+                  <div className="text-3xl text-gray-300">✉️</div>
+                  <div className="text-xs font-medium text-gray-500">
+                    {debouncedSearch
+                      ? `No search results for "${debouncedSearch}"`
+                      : activeTab === 'scheduled'
+                      ? 'No scheduled emails in queue'
+                      : 'No sent emails recorded yet'}
+                  </div>
+                </div>
+              ) : (
+                /* Email Row Cards (Screens 2 & 3) */
+                <div className="divide-y divide-gray-100">
+                  {emails.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => setSelectedEmail(item)}
+                      className="py-3 px-4 hover:bg-gray-50/80 rounded-xl transition cursor-pointer flex items-center justify-between group"
+                    >
+                      <div className="flex items-center space-x-3.5 min-w-0 flex-1 pr-4">
+                        {/* Recipient */}
+                        <div className="w-40 shrink-0 truncate text-xs font-semibold text-gray-900">
+                          To: {item.recipient_email}
+                        </div>
+
+                        {/* Status Badge (Amber for Scheduled/Processing, Green for Sent, Red for Failed) */}
+                        {item.status === 'sent' ? (
+                          <span className="shrink-0 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold px-2 py-0.5 rounded uppercase tracking-wider">
+                            Sent
+                          </span>
+                        ) : item.status === 'failed' ? (
+                          <span className="shrink-0 bg-red-50 text-red-700 border border-red-200 text-[10px] font-semibold px-2 py-0.5 rounded uppercase tracking-wider">
+                            Failed
+                          </span>
+                        ) : (
+                          <span className="shrink-0 bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-semibold px-2 py-0.5 rounded uppercase tracking-wider">
+                            In Queue
+                          </span>
+                        )}
+
+                        {/* Subject & Preview Snippet */}
+                        <div className="truncate text-xs text-gray-700 min-w-0 flex-1">
+                          <span className="font-semibold text-gray-900">{item.subject}</span>
+                          <span className="text-gray-400 ml-1.5">— {item.body ? item.body.slice(0, 80) : 'No preview available'}</span>
+                        </div>
+                      </div>
+
+                      {/* Timestamp on right */}
+                      <div className="text-[11px] text-gray-400 shrink-0">
+                        {activeTab === 'scheduled'
+                          ? formatDisplayDate(item.scheduled_at)
+                          : formatDisplayDate(item.sent_at || item.scheduled_at)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 };

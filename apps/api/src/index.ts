@@ -2,8 +2,24 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { createApp } from './app.js';
 
-// Load environment from workspace root if not already set
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+import fs from 'fs';
+
+// Load environment from workspace root or current directory
+function loadEnv() {
+  let curr = process.cwd();
+  for (let i = 0; i < 5; i++) {
+    const candidate = path.resolve(curr, '.env');
+    if (fs.existsSync(candidate)) {
+      dotenv.config({ path: candidate });
+      return;
+    }
+    const parent = path.dirname(curr);
+    if (parent === curr) break;
+    curr = parent;
+  }
+  dotenv.config();
+}
+loadEnv();
 
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const app = createApp();

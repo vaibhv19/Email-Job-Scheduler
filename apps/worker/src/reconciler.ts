@@ -62,8 +62,6 @@ export async function runStartupReconciliation(
       };
     }
 
-    console.log('[Reconciler] Acquired reconciliation advisory lock. Running recovery...');
-
     let recoveredOutbox = 0;
     let recoveredStaleProcessing = 0;
     let skippedActiveProcessing = 0;
@@ -287,6 +285,12 @@ export async function runStartupReconciliation(
     } catch (staleErr) {
       await client.query('ROLLBACK');
       console.error('[Reconciler] Failed to reconcile stale processing emails:', staleErr);
+    }
+
+    if (recoveredOutbox > 0 || recoveredStaleProcessing > 0 || ambiguousCrashesHandled > 0) {
+      console.log(
+        `[Reconciler] Recovery complete: outbox recovered=${recoveredOutbox}, stale processing recovered=${recoveredStaleProcessing}, ambiguous crashes=${ambiguousCrashesHandled}.`,
+      );
     }
 
     return {

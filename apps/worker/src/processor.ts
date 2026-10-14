@@ -246,6 +246,21 @@ export async function processEmailJob(
          WHERE id = $4`,
         [sendResult.providerMessageId, sendResult.previewUrl, sendResult.messageId, email.id],
       );
+
+      // Record outbox event to sync status update to Elasticsearch
+      await client.query(
+        `INSERT INTO scheduling_outbox (event_type, aggregate_id, payload)
+         VALUES ($1, $2, $3)`,
+        [
+          'elasticsearch_update',
+          email.id,
+          JSON.stringify({
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            preview_url: sendResult.previewUrl,
+          }),
+        ],
+      );
     });
 
     console.log(`[Worker] Email ${email.id} successfully sent to ${email.recipient_email}.`);
@@ -299,6 +314,19 @@ export async function processEmailJob(
            WHERE id = $2`,
           [exhaustionJson, email.id],
         );
+
+        await client.query(
+          `INSERT INTO scheduling_outbox (event_type, aggregate_id, payload)
+           VALUES ($1, $2, $3)`,
+          [
+            'elasticsearch_update',
+            email.id,
+            JSON.stringify({
+              status: 'failed',
+              last_error: sendResult.errorMessage,
+            }),
+          ],
+        );
       });
 
       // Refund quota slot on terminal retry exhaustion when non-acceptance is established (RATE-12)
@@ -351,6 +379,19 @@ export async function processEmailJob(
        SET status = 'failed', last_error = $1, updated_at = NOW()
        WHERE id = $2`,
       [errorJson, email.id],
+    );
+
+    await client.query(
+      `INSERT INTO scheduling_outbox (event_type, aggregate_id, payload)
+       VALUES ($1, $2, $3)`,
+      [
+        'elasticsearch_update',
+        email.id,
+        JSON.stringify({
+          status: 'failed',
+          last_error: sendResult.errorMessage,
+        }),
+      ],
     );
   });
 

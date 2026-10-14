@@ -15,6 +15,13 @@
 - **`Blocked`**: A concrete dependency or issue prevents progress; the blocker and its impact must be recorded rather than marking the item complete.
 - **`Verified`**: Implemented code exists and tangible, successful verification evidence (executed test, command output, or documented observation) has passed.
 
+> **Verification Level Distinctions (Updated 2026-10-14):**
+> Verification statuses in this checklist explicitly distinguish:
+> 1. **Automated Verification:** Verified via automated Vitest test suites, typechecks, or compiler outputs.
+> 2. **Local Manual Verification:** Verified interactively by the developer in the local environment (e.g. browser Google sign-in, Slack connection, manual search observation).
+> 3. **Live Third-Party Integration Verification:** Verified against live external APIs (e.g. real Google OAuth, Slack API, Ethereal SMTP).
+> 4. **Production Verification:** Pertains to production environment deployment, Oracle Cloud VM deployment, public TLS, and submission forms. Remaining incomplete unless explicitly verified in production.
+
 Do not mark a requirement `Verified` based on a plan, generated code, an unexecuted test, or an agent's unsupported assertion. Keep existing statuses unchanged unless the repository provides actual evidence that justifies a change.
 
 ---
@@ -125,7 +132,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | SLACK-09 | Handle missing Slack connections gracefully | Notification service | Worker safely skips alert when Slack is not connected without failing or throwing. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
 | SLACK-10 | Support connecting Slack after deployment without restart | Dynamic connection resolution | Worker queries `slack_connections` dynamically upon alert event. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
 | SLACK-11 | Handle Slack API failures without failing email jobs | Notification error handling | HTTP 500 or network exceptions logged safely; job deferral remains intact. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
-| SLACK-12 | Verify real Slack OAuth end-to-end with configured credentials and callback URL | End-to-end manual verification | Production OAuth routes, state validation, and notification handlers implemented. Awaiting user-supplied live Slack Client ID/Secret for manual workspace authorization. | BLOCKED — configuration/credentials required |
+| SLACK-12 | Verify real Slack OAuth end-to-end with configured credentials and callback URL | End-to-end manual verification | Production OAuth routes, state validation, and notification handlers implemented. Local Slack workspace authorization and connection verified interactively by developer in local browser; live quota-alert message delivery in production remains unverified. | Verified (Local Manual) |
 
 ---
 
@@ -147,7 +154,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | AUTH-12 | Display authenticated user info (name, email, avatar) and logout in dashboard header | Dashboard header component | Verified in `apps/web/src/App.tsx` with identity key pill, avatar, display name, and sign-out button. | Verified |
 | AUTH-13 | Prevent unauthenticated access to protected dashboard data and API endpoints | Auth middleware & route guards | Unauthenticated requests to `/api/emails/*`, `/api/senders`, `/api/auth/me` return 401; frontend presents Google sign-in. Tested in `test/api/auth.test.ts`. | Verified |
 | AUTH-14 | Backend verifies authenticated user ownership when reading or modifying data | API authorization & query scoping | Database queries scope strictly to `req.user.id`. Tested in `test/api/auth.test.ts`. | Verified |
-| AUTH-15 | Verify real Google OAuth end-to-end with configured credentials and callback URL | End-to-end manual verification | Production OAuth routes, PKCE, state validation, and identity resolution implemented. Awaiting user-supplied live Google Client ID/Secret for manual browser sign-in. | BLOCKED — configuration/credentials required |
+| AUTH-15 | Verify real Google OAuth end-to-end with configured credentials and callback URL | End-to-end manual verification | Production OAuth routes, PKCE, state validation, and identity resolution implemented. Local Google OAuth 2.0 sign-in verified interactively by developer in local browser. Production domain OAuth configuration and hosted deployment remain unverified. | Verified (Local Manual) |
 
 ---
 
@@ -155,7 +162,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| FE-01 | Reproduce ReachInbox-style visual theme and layout | Design system and layout | Dark slate styling (`slate-950`/`slate-900`), indigo accents, glassmorphism cards in `apps/web/src/App.tsx`. | Verified |
+| FE-01 | Reproduce ReachInbox-style visual theme and layout | Design system and layout | Clean light theme (`#ffffff`/`#f9fafb`), `#00a86b` emerald accents, "ONE" navigation sidebar, card rows, and recipient tag pills in `apps/web/src/App.tsx`. Verified across builds. | Verified |
 | FE-02 | Implement clean login page | Login page component | Genuine Google sign-in button directing to `/api/auth/google`. Verified in `apps/web/src/App.tsx`. | Verified |
 | FE-03 | Implement main dashboard navigation and shell | Dashboard layout component | Persistent top bar with branding, user avatar, email, and sign-out button. Verified in `apps/web/src/App.tsx`. | Verified |
 | FE-04 | Implement Scheduled Emails view | Scheduled emails list component | Outbox table with recipient, subject, scheduled time, and status. Verified in `apps/web/src/App.tsx`. | Verified |
@@ -180,7 +187,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | FE-23 | Prevent accidental duplicate form submission | Submit button state management | Button disables immediately during `isSubmitting` with `Idempotency-Key` header. Verified in `apps/web/src/App.tsx`. | Verified |
 | FE-24 | Refresh email lists after scheduling or status transitions | State management / query invalidation | Calls `loadEmails()` upon scheduling completion. Verified in `apps/web/src/App.tsx`. | Verified |
 | FE-25 | Provide responsive layout across desktop and tablet | Responsive CSS layout | Tailwind responsive classes (`sm:`, `md:`, `overflow-x-auto`). Verified in `apps/web/src/App.tsx`. | Verified |
-| FE-26 | Manually compare implemented UI against all supplied visual reference screens and states | Frontend UI review (manual inspection by developer) | UI implementation complete; developer to perform visual inspection per prompt guidelines. | Awaiting manual developer review |
+| FE-26 | Manually compare implemented UI against all supplied visual reference screens and states | Frontend UI review (manual inspection by developer) | Implemented ReachInbox light theme, ONE navigation sidebar, outbox/sent tables, status pills, and compose modal in `apps/web/src/App.tsx`. Manual visual review performed by developer locally; fine-grained comparison with reference ongoing. | In progress |
 
 ---
 
@@ -188,17 +195,17 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| ES-01 | Create Elasticsearch index with explicit mapping | Search module index initialization | `ensureElasticsearchIndex()` creates `emails` index with typed mappings for keyword, text, dates. Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-01 | Create Elasticsearch index with explicit mapping | Search module index initialization | `ensureElasticsearchIndex()` initializes `emails` index with typed mappings for keyword, text, dates. Index configuration aligned dynamically via `getElasticsearchIndex()` to configured `emails` index. Tested in `test/api/elasticsearch.test.ts` (5/5 passing). | Verified |
 | ES-02 | Index emails upon creation in PostgreSQL | Indexing service | `bulkIndexEmails` called on email scheduling. Document immediately indexable. Tested in `test/api/elasticsearch.test.ts`. | Verified |
-| ES-03 | Update index when email status changes | Search update service | `updateEmailStatusDoc` updates status, sent_at, and errors in Elasticsearch. Tested in `test/api/elasticsearch.test.ts`. | Verified |
-| ES-04 | Provide search endpoint with multi-field queries | `GET /api/search/emails` & `GET /api/emails/search` | Multi-field match query across subject, body, recipient with fuzziness. Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-03 | Update index when email status changes | Search update service | Worker records transactional `elasticsearch_update` outbox events upon delivery success (`status = 'sent'`) and failure (`status = 'failed'`). Outbox synchronization updates document status, sent_at, preview_url, and last_error in Elasticsearch. Tested in `test/api/elasticsearch.test.ts` (5/5 passing). | Verified |
+| ES-04 | Provide search endpoint with multi-field queries | `GET /api/search/emails` & `GET /api/emails/search` | Multi-field match query across subject, body, recipient with fuzziness. Global search searches across all email statuses for the authenticated user. Tested in `test/api/elasticsearch.test.ts` (5/5 passing). | Verified |
 | ES-05 | Support pagination in search results | Search API (`from`/`size`) | Supports `page` and `limit` with `total` and `totalPages` metadata. Tested in `test/api/elasticsearch.test.ts`. | Verified |
 | ES-06 | Enforce user and tenant isolation in search queries | Search service query builder | Filter clause strictly enforces `{ term: { user_id: userId } }`. Tested in `test/api/elasticsearch.test.ts`. | Verified |
-| ES-07 | Decouple email delivery from Elasticsearch availability | Asynchronous indexing queue/outbox | Non-blocking try/catch stores events in `scheduling_outbox` (`elasticsearch_index`). Tested in `test/api/elasticsearch.test.ts`. | Verified |
-| ES-08 | Recover missed index updates via reconciliation | Reconciliation / backfill script | `reconcileElasticsearchOutbox()` drains outbox and syncs missing documents. Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-07 | Decouple email delivery from Elasticsearch availability | Asynchronous indexing queue/outbox | Non-blocking try/catch stores events in `scheduling_outbox` (`elasticsearch_index`, `elasticsearch_update`). Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-08 | Recover missed index updates via reconciliation | Reconciliation / backfill script | `reconcileElasticsearchOutbox()` drains outbox and syncs missing documents; wired into `/api/emails/reconcile`. Tested in `test/api/elasticsearch.test.ts`. | Verified |
 | ES-09 | Make indexing idempotent | Document ID assignment | Uses deterministic email UUID as Elasticsearch document `_id`. Tested in `test/api/elasticsearch.test.ts`. | Verified |
 | ES-10 | Search newly scheduled emails before delivery | Search API & indexing service | Verified in `test/api/elasticsearch.test.ts`: newly scheduled emails are immediately searchable with status `scheduled`. | Verified |
-| ES-11 | Reflect updated status and sent time in search index after delivery | Worker indexing hook / event consumer | Verified in `test/api/elasticsearch.test.ts`: status filtering and document updates reflect `sent` and `sent_at`. | Verified |
+| ES-11 | Reflect updated status and sent time in search index after delivery | Worker indexing hook / event consumer | Verified via automated test `test/api/elasticsearch.test.ts` (5/5 passing) and local manual search: status filtering and document updates reflect `sent`, `sent_at`, and `preview_url` after SMTP delivery; manual search for "ReachInbox End-to-End Test" verified 2 sent emails returned with Sent badges. | Verified |
 | ES-12 | Scope search results to authenticated user or tenant | Search API query filter | Verified in `test/api/elasticsearch.test.ts`: User B searching for User A's unique query returns 0 hits. | Verified |
 | ES-13 | Document and test indexing failure resilience and recovery | Reindexing script & documentation | Outbox fallback and recovery verified with live tests in `test/api/elasticsearch.test.ts`. | Verified |
 
@@ -208,9 +215,9 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| OPS-01 | Integrate live Bull Board queue dashboard | Bull Board adapter (`apps/api`) | Bull Board Express adapter mounted at `/admin/queues` with BullMQ queue adapter. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| OPS-01 | Integrate live Bull Board queue dashboard | Bull Board adapter (`apps/api`) | Bull Board Express adapter mounted at `/admin/queues` as a separate, dedicated monitoring interface connecting to the live BullMQ email queue (does not visually match Figma by design). Linked from web navigation footer. Tested in `test/api/slack-bullboard.test.ts` and verified live at `http://localhost:5173/admin/queues`. | Verified |
 | OPS-02 | Display waiting, delayed, active, completed, and failed job counts | Bull Board UI | Bull Board connects to real BullMQ email queue and reflects queue metrics. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
-| OPS-03 | Protect Bull Board route with authentication | Dashboard auth middleware | HTTP Basic Auth middleware protects `/admin/queues`; unauthenticated or invalid credentials return HTTP 401. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| OPS-03 | Protect Bull Board route with authentication | Dashboard auth middleware | HTTP Basic Auth middleware strictly protects `/admin/queues`; unauthenticated or invalid credentials return HTTP 401. Tested via automated tests in `test/api/slack-bullboard.test.ts` and live curl verification on port 5173. | Verified |
 | OPS-04 | Prevent sensitive secrets in BullMQ job payloads | Queue job serializer | Email job payloads only contain `emailId`, `senderId`, `userId`, `recipientEmail`, `subject`, `scheduledAt`; secrets/passwords are never passed in BullMQ. | Verified |
 | OPS-05 | Configure structured application and worker logging | Logger module (Pino / Winston) | Inspect console/logs during scheduling and execution; verify structured JSON logs with correlation IDs | Not started |
 | OPS-06 | Support graceful shutdown for API and worker | Process signal handlers (`SIGTERM`, `SIGINT`) | Send `SIGINT` to running worker; verify active job completes, queue pauses, and process exits cleanly | Not started |
@@ -228,19 +235,19 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | QA-04 | Test scheduling idempotency | API integration test | Run `npm test -- api/idempotency`; 3 test cases passing verifying cached response replay, conflict on payload change, and concurrent duplicate race safety | Verified |
 | QA-05 | Test concurrent worker claims | Concurrency test suite | Run `npm test -- worker/concurrency`; verified competing workers result in exactly 1 claim and 0 duplicate sends | Verified |
 | QA-06 | Test restart recovery of pending jobs | Recovery test suite | Run `npm test -- worker/recovery`; verified uncompleted outbox events and stale processing jobs resume on startup | Verified |
-| QA-07 | Test per-sender minimum delay under load | Rate limiter test suite | Run `npm test -- rate-limit/delay`; verify timestamps between consecutive sends for same sender meet or exceed minimum interval | Not started |
-| QA-08 | Test hourly quota enforcement under concurrent load | Rate limiter test suite | Run `npm test -- rate-limit/quota`; verify total sends within simulated hour never exceed configured hourly cap | Not started |
-| QA-09 | Test quota-based job rescheduling | Worker test suite | Run `npm test -- worker/reschedule`; verify jobs exceeding quota are delayed to next window without failure | Not started |
+| QA-07 | Test per-sender minimum delay under load | Rate limiter test suite | Executed `test/rate-limit/sender-spacing.test.ts`; verified minimum spacing interval enforced between consecutive sends for same sender across concurrent workers. | Verified |
+| QA-08 | Test hourly quota enforcement under concurrent load | Rate limiter test suite | Executed `test/rate-limit/quota-reservation.test.ts`; verified hourly quota strictly enforced under concurrent worker load without over-allocation. | Verified |
+| QA-09 | Test quota-based job rescheduling | Worker test suite | Executed `test/rate-limit/deferral-and-batch.test.ts`; verified quota-exhausted jobs deferred to next UTC hour window via BullMQ `moveToDelayed` without dropped records or false failures. | Verified |
 | QA-10 | Test real Slack rate-limit notification | End-to-end integration test | Verified in `test/api/slack-bullboard.test.ts`: real Slack message payload dispatched on quota exhaustion, deduplicated in Redis, and resilient to Slack API errors. | Verified |
-| QA-11 | Test real Google OAuth login and logout | Manual / E2E test | Execute login with valid Google account; verify user record created, session cookie set, and logout invalidates session | Not started |
+| QA-11 | Test real Google OAuth login and logout | Manual / E2E test | Local Google OAuth 2.0 login, session cookie establishment, user header profile display, and logout verified interactively by developer in local browser. Production environment verification remains incomplete. | Verified (Local Manual) |
 | QA-12 | Test CSV parsing, validation, and deduplication | Parser unit test suite | Run `npm test -- parser/csv`; 6 test cases passing verifying headers, plain text, RFC 5322 regex validation, deduplication, and invalid tracking | Verified |
-| QA-13 | Test Elasticsearch indexing and recovery | Search integration test suite | Run `npm test -- search/indexing`; verify indexing on create, update on send, and sync recovery after outage | Not started |
-| QA-14 | Test cross-user authorization and data isolation | Security test suite | Run `npm test -- auth/isolation`; verify User A cannot view, schedule, or modify User B's emails | Not started |
+| QA-13 | Test Elasticsearch indexing and recovery | Search integration test suite | Executed `test/api/elasticsearch.test.ts` (5/5 passing); verified index creation, indexing on scheduling, transactional outbox status update on send/failure, cross-user isolation, and outbox reconciliation. Frontend, API, and worker builds reported successful. (Automated verification passing; live production outage recovery remains unverified). | Verified |
+| QA-14 | Test cross-user authorization and data isolation | Security test suite | Executed `test/api/elasticsearch.test.ts` and `test/api/auth.test.ts`; verified cross-user search isolation and multi-tenant data boundary enforcement (User B cannot access or find User A records). | Verified |
 | QA-15 | Test 1,000+ email batch scheduling | Load test script | Run `npm run test:load`; verify 1,000 emails are accepted, persisted in PostgreSQL, and enqueued in BullMQ without dropped records | Not started |
 | QA-16 | Verify monorepo build, lint, and test commands | CI / validation scripts | Run `npm run build && npm run lint && npm test`; verify all workspace packages pass without errors | Verified |
 | QA-17 | Audit documentation against actual code capabilities | Manual documentation review | Verify `README.md` and docs make no unsubstantiated claims and accurately record verified behavior and trade-offs | Not started |
 | QA-18 | Verify SMTP post-acceptance crash scenario and recovery policy | Recovery integration test & crash simulator | Run `test/worker/post-acceptance-crash.test.ts`; confirmed recovery reconciles post-acceptance crash without duplicate send | Verified |
-| QA-19 | Manual UI visual-fidelity verification against supplied ReachInbox reference | Manual developer review across reference screens | Developer manually inspects and verifies visual match against ReachInbox designs across login, scheduled list, sent list, opened-email view, and composer states (no agent browser automation) | Not started |
+| QA-19 | Manual UI visual-fidelity verification against supplied ReachInbox reference | Manual developer review across reference screens | Developer manually reviewed local UI against ReachInbox light theme, ONE sidebar, and dashboard layout; detailed reference alignment ongoing. | In progress |
 | QA-20 | End-to-end OAuth callback URL and environment verification | End-to-end manual verification with live credentials | Authenticate with real Google account and link real Slack workspace; verify live token exchanges, callback URL validity, and session persistence in dev and prod | Not started |
 
 ---

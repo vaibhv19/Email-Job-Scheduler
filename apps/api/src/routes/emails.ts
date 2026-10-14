@@ -10,7 +10,7 @@ import {
   listSentEmails,
   getEmailById,
 } from '../services/email.js';
-import { searchEmails } from '../services/elasticsearch.js';
+import { searchEmails, reconcileElasticsearchOutbox } from '../services/elasticsearch.js';
 import { reconcilePendingOutbox } from '../services/reconciliation.js';
 
 export const emailRouter = Router();
@@ -240,10 +240,16 @@ emailRouter.post(
   requireUser,
   async (_req: Request, res: Response): Promise<void> => {
     try {
-      const result = await reconcilePendingOutbox();
+      const [queueResult, esResult] = await Promise.all([
+        reconcilePendingOutbox(),
+        reconcileElasticsearchOutbox(),
+      ]);
       res.status(200).json({
         status: 'ok',
-        reconciliation: result,
+        reconciliation: {
+          ...queueResult,
+          elasticsearch: esResult,
+        },
       });
     } catch (err) {
       console.error('Error reconciling outbox:', err);

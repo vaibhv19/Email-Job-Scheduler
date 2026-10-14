@@ -1,7 +1,11 @@
 import { Client } from '@elastic/elasticsearch';
 import { query } from '@reachinbox/db';
 
-export const ELASTICSEARCH_INDEX = process.env.ELASTICSEARCH_INDEX || 'reachinbox_emails';
+export function getElasticsearchIndex(): string {
+  return process.env.ELASTICSEARCH_INDEX || 'emails';
+}
+
+export const ELASTICSEARCH_INDEX = getElasticsearchIndex();
 
 let esClientInstance: Client | null = null;
 
