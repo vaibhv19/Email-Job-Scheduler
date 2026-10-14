@@ -287,7 +287,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | SUB-01 | Keep the GitHub repository private | GitHub repository settings | Verify repository visibility is set to Private | Not started |
 | SUB-02 | Invite reviewer `Mitrajit` as collaborator | GitHub repository collaborators | Send repository invitation to GitHub user `Mitrajit` with collaborator permissions; verify invitation is active | Not started |
 | SUB-03 | Invite reviewer `Yadav036` as collaborator | GitHub repository collaborators | Send repository invitation to GitHub user `Yadav036` with collaborator permissions; verify invitation is active | Not started |
-| SUB-04 | Push the latest source code and README to main branch | Git repository (`main` branch) | Verify remote `origin/main` has all committed source code, documentation, and lockfile | Not started |
+| SUB-04 | Push the latest source code and README to main branch | Git repository (`main` branch) | Pushed `main` to `origin/main` (`ebf2721`); remote repository verified up-to-date with all source code, documentation, and lockfile. | Verified |
 | SUB-05 | Provide an active hosted assignment URL | Cloud deployment platform | Verify hosted application URL is live, accessible over HTTPS, and functional | Not started |
 | SUB-06 | Record demo video no longer than 5 minutes | Video recording (Loom / Google Drive) | Check demo video file/link; verify recording duration is <= 5:00 minutes | Not started |
 | SUB-07 | Demonstrate email scheduling workflow in demo video | Demo video content | Video demonstrates creating and scheduling single and batch emails | Not started |
