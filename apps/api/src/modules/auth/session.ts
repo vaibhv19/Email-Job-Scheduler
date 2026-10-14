@@ -100,6 +100,7 @@ export async function invalidateAllUserSessions(userId: string): Promise<void> {
 export function getSessionCookieOptions() {
   const isSecure = process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true';
   const sameSite = (process.env.COOKIE_SAME_SITE as 'lax' | 'strict' | 'none') || 'lax';
+  const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
 
   return {
     httpOnly: true,
@@ -107,17 +108,20 @@ export function getSessionCookieOptions() {
     sameSite,
     maxAge: SESSION_TTL_MS,
     path: '/',
+    ...(cookieDomain ? { domain: cookieDomain } : {}),
   };
 }
 
 export function getClearCookieOptions() {
   const isSecure = process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true';
   const sameSite = (process.env.COOKIE_SAME_SITE as 'lax' | 'strict' | 'none') || 'lax';
+  const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
 
   return {
     httpOnly: true,
     secure: isSecure,
     sameSite,
     path: '/',
+    ...(cookieDomain ? { domain: cookieDomain } : {}),
   };
 }

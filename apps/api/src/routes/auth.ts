@@ -53,6 +53,8 @@ authRouter.get('/api/auth/google', (_req: Request, res: Response): void => {
 
     const isSecure = process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true';
 
+    const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
+
     // Set short-lived HTTP-only state cookie to protect against CSRF & replay attacks
     res.cookie(OAUTH_STATE_COOKIE_NAME, signedCookieValue, {
       httpOnly: true,
@@ -60,6 +62,7 @@ authRouter.get('/api/auth/google', (_req: Request, res: Response): void => {
       sameSite: 'lax',
       maxAge: OAUTH_STATE_TTL_MS,
       path: '/',
+      ...(cookieDomain ? { domain: cookieDomain } : {}),
     });
 
     const authorizationUrl = buildGoogleAuthUrl(client, state, codeChallenge);
