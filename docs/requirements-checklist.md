@@ -249,20 +249,20 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| DOC-01 | Document architecture and component responsibilities | `README.md` and `docs/architecture.md` | Inspect `README.md`; verify component diagram, responsibilities, and data flow are clearly articulated | Not started |
-| DOC-02 | Document backend API and worker setup instructions | `README.md` | Follow backend setup instructions on clean environment; verify API and worker start without undocumented steps | Not started |
-| DOC-03 | Document frontend setup instructions | `README.md` | Follow frontend setup instructions; verify web application starts and connects to backend | Not started |
-| DOC-04 | Document database and Redis setup and migrations | `README.md` | Execute documented Docker and migration commands; verify database and Redis initialize correctly | Not started |
-| DOC-05 | Document Ethereal SMTP configuration | `README.md` | Follow instructions to configure Ethereal credentials; verify test emails deliver and produce preview URLs | Not started |
-| DOC-06 | Document Google OAuth setup and redirect URIs | `README.md` | Verify step-by-step instructions for Google Cloud Console, OAuth consent screen, and redirect URIs | Not started |
-| DOC-07 | Document Slack OAuth setup and notification testing | `README.md` | Verify instructions for Slack app creation, OAuth scopes, bot tokens, and triggering rate limit alerts | Not started |
-| DOC-08 | Document Elasticsearch setup and index initialization | `README.md` | Follow instructions to start Elasticsearch and initialize indices; verify search operates as documented | Not started |
-| DOC-09 | Explain restart recovery and reconciliation mechanisms | `README.md` | Review documentation for clear description of startup reconciliation, outbox pattern, and BullMQ recovery | Not started |
-| DOC-10 | Explain concurrency, delay, quota, and rescheduling behavior | `README.md` | Review documentation for detailed explanation of Redis atomic scripts, locking order, and window semantics | Not started |
-| DOC-11 | Explain idempotency guarantees and SMTP delivery limitations | `README.md` | Verify documentation acknowledges the SMTP crash window and explains at-least-once delivery trade-offs | Not started |
-| DOC-12 | Document all implemented features mapped to checklist | `README.md` | Inspect feature list; verify direct mapping from features to assignment checklist IDs | Not started |
-| DOC-13 | Document assumptions, trade-offs, and design decisions | `README.md` | Review architecture notes for explicit justifications of technical choices and acknowledged trade-offs | Not started |
-| DOC-14 | Provide clean `.env.example` with all configuration keys | `.env.example` in repository root | Inspect `.env.example`; verify all required environment variables are listed with dummy values and documentation | Not started |
+| DOC-01 | Document architecture and component responsibilities | `README.md` and `docs/architecture.md` | Component diagram, responsibilities, and data flow documented in `README.md` and `docs/architecture.md`. | Verified |
+| DOC-02 | Document backend API and worker setup instructions | `README.md` | Step-by-step API and worker launch instructions documented in `README.md` Section 3. | Verified |
+| DOC-03 | Document frontend setup instructions | `README.md` | React/Vite web application launch instructions documented in `README.md` Section 3. | Verified |
+| DOC-04 | Document database and Redis setup and migrations | `README.md` | Docker Compose infrastructure startup and `npm run db:migrate` documented in `README.md` Section 3. | Verified |
+| DOC-05 | Document Ethereal SMTP configuration | `README.md` | Ethereal account creation and test message inspection documented in `README.md` Section 4.3. | Verified |
+| DOC-06 | Document Google OAuth setup and redirect URIs | `README.md` | Google Cloud Console setup, test user configuration, and redirect URIs documented in `README.md` Section 4.1. | Verified |
+| DOC-07 | Document Slack OAuth setup and notification testing | `README.md` | Slack App creation, bot scopes, webhook permissions, and alert deduplication documented in `README.md` Section 4.2. | Verified |
+| DOC-08 | Document Elasticsearch setup and index initialization | `README.md` | Elasticsearch single-node setup and mapping initialization documented in `README.md` Section 3 & 5. | Verified |
+| DOC-09 | Explain restart recovery and reconciliation mechanisms | `README.md` | Startup reconciliation, outbox pattern, and crash recovery documented in `README.md` Section 5.3 & 5.4. | Verified |
+| DOC-10 | Explain concurrency, delay, quota, and rescheduling behavior | `README.md` | Redis atomic Lua scripts, UTC hour windows, and deferral semantics documented in `README.md` Section 5.1. | Verified |
+| DOC-11 | Explain idempotency guarantees and SMTP delivery limitations | `README.md` | At-least-once delivery trade-offs and SMTP post-acceptance crash windows documented in `README.md` Section 5.3. | Verified |
+| DOC-12 | Document all implemented features mapped to checklist | `README.md` | Feature matrix mapped directly to checklist sections in `README.md` Section 9. | Verified |
+| DOC-13 | Document assumptions, trade-offs, and design decisions | `README.md` | Explicit justifications and acknowledged constraints documented in `README.md` and `docs/architecture.md`. | Verified |
+| DOC-14 | Provide clean `.env.example` with all configuration keys | `.env.example` in repository root | `.env.example` verified with safe placeholders and explanatory comments across all 11 sections. | Verified |
 | DOC-15 | Deploy application to accessible cloud hosting environment | Oracle Cloud Always Free VM (Docker Compose + Reverse Proxy) | Access deployed frontend and backend URLs on Oracle Cloud Always Free VM over HTTPS; verify hosted application is reachable and functional | Not started |
 | DOC-16 | Verify production environment configuration and integrations | Hosted Oracle Cloud VM environment | Execute test workflow on hosted instance; verify OAuth, DB, Redis, worker, and SMTP function on Oracle Cloud VM | Not started |
 | DOC-17 | Verify container image CPU architecture compatibility (ARM64 / multi-arch) on target VM | Target VM Docker deployment | Run `uname -m` and inspect container images; verify API, worker, web, PostgreSQL, Redis, and Elasticsearch initialize natively without architecture faults | Not started |

@@ -1,0 +1,171 @@
+services:
+  # ----------------------------------------------------------------------------
+  # 1. PostgreSQL 16 (Stateful Relational Database - Source of Truth)
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: reachinbox-prod-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-reachinbox_scheduler}
+    volumes:
+      - reachinbox_postgres_data:/var/lib/postgresql/data
+    networks:
+      - reachinbox_network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-reachinbox_scheduler}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ----------------------------------------------------------------------------
+  # 2. Redis 7 (BullMQ Delayed Job Queue & Atomic Rate-Limit Coordination)
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: reachinbox-prod-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - reachinbox_redis_data:/data
+    networks:
+      - reachinbox_network
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 3s
+
+  # ----------------------------------------------------------------------------
+  # 3. Elasticsearch 8.11 (Full-Text Search & Tenant-Scoped Query Engine)
+  # ----------------------------------------------------------------------------
+  elasticsearch:
+    image: elasticsearch:8.11.3
+    container_name: reachinbox-prod-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - reachinbox_elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - reachinbox_network
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -s -f http://localhost:9200/_cluster/health || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ----------------------------------------------------------------------------
+  # 4. Backend API Service (@reachinbox/api)
+  # ----------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: reachinbox-prod-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-reachinbox_scheduler}
+      - REDIS_URL=redis://redis:6379
+      - ELASTICSEARCH_NODE=http://elasticsearch:9200
+    networks:
+      - reachinbox_network
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:3001/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ----------------------------------------------------------------------------
+  # 5. Background Worker Service (@reachinbox/worker)
+  # ----------------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: reachinbox-prod-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-reachinbox_scheduler}
+      - REDIS_URL=redis://redis:6379
+      - ELASTICSEARCH_NODE=http://elasticsearch:9200
+    networks:
+      - reachinbox_network
+
+  # ----------------------------------------------------------------------------
+  # 6. Frontend Web SPA (@reachinbox/web)
+  # ----------------------------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: reachinbox-prod-web
+    restart: unless-stopped
+    networks:
+      - reachinbox_network
+
+  # ----------------------------------------------------------------------------
+  # 7. Reverse Proxy & Automated TLS (Caddy)
+  # ----------------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    container_name: reachinbox-prod-caddy
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - reachinbox_caddy_data:/data
+      - reachinbox_caddy_config:/config
+    networks:
+      - reachinbox_network
+    depends_on:
+      - api
+      - web
+
+volumes:
+  reachinbox_postgres_data:
+    name: reachinbox_prod_postgres_data
+  reachinbox_redis_data:
+    name: reachinbox_prod_redis_data
+  reachinbox_elasticsearch_data:
+    name: reachinbox_prod_elasticsearch_data
+  reachinbox_caddy_data:
+    name: reachinbox_prod_caddy_data
+  reachinbox_caddy_config:
+    name: reachinbox_prod_caddy_config
+
+networks:
+  reachinbox_network:
+    name: reachinbox_prod_network
+    driver: bridge

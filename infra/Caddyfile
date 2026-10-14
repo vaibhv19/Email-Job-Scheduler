@@ -1,0 +1,32 @@
+# Caddy reverse proxy configuration for ReachInbox Email Scheduler
+# Automatically provisions and renews Let's Encrypt TLS certificates
+
+{
+    email {$ACME_EMAIL:admin@example.com}
+}
+
+{$DOMAIN:localhost} {
+    # Reverse proxy backend API endpoints
+    handle /api/* {
+        reverse_proxy api:3001
+    }
+
+    # API health and readiness probes
+    handle /health {
+        reverse_proxy api:3001
+    }
+
+    handle /ready {
+        reverse_proxy api:3001
+    }
+
+    # Protected Bull Board queue dashboard (HTTP Basic Auth enforced by API)
+    handle /admin/queues* {
+        reverse_proxy api:3001
+    }
+
+    # Frontend web application
+    handle {
+        reverse_proxy web:80
+    }
+}
