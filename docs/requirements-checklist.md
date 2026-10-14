@@ -188,19 +188,19 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| ES-01 | Create Elasticsearch index with explicit mapping | Search module index initialization | Run index init script; verify `emails` index created with mappings for keyword, text, and date fields | Not started |
-| ES-02 | Index emails upon creation in PostgreSQL | Indexing service | Schedule email; query Elasticsearch directly via `GET /emails/_doc/<id>`; verify document exists | Not started |
-| ES-03 | Update index when email status changes | Search update service | Transition email to `sent` or `failed`; verify updated document fields in Elasticsearch | Not started |
-| ES-04 | Provide search endpoint with multi-field queries | `GET /api/search/emails` | Query `/api/search/emails?q=test`; verify matches against recipient, subject, and body fields | Not started |
-| ES-05 | Support pagination in search results | Search API (`from`/`size`) | Query search endpoint with `page=1&limit=10`; verify bounded result list and total hits count | Not started |
-| ES-06 | Enforce user and tenant isolation in search queries | Search service query builder | Verify all Elasticsearch search queries include a `term: { user_id }` filter clause | Not started |
-| ES-07 | Decouple email delivery from Elasticsearch availability | Asynchronous indexing queue/outbox | Simulate Elasticsearch downtime; verify scheduling and SMTP delivery proceed uninterrupted | Not started |
-| ES-08 | Recover missed index updates via reconciliation | Reconciliation / backfill script | Run `npm run search:reindex`; verify all missing or outdated PostgreSQL records are synced to Elasticsearch | Not started |
-| ES-09 | Make indexing idempotent | Document ID assignment | Index same email event multiple times; verify Elasticsearch document version increments without duplicate documents | Not started |
-| ES-10 | Search newly scheduled emails before delivery | Search API & indexing service | Schedule email; immediately execute search query for recipient/subject; verify record returned with status `scheduled` before send time | Not started |
-| ES-11 | Reflect updated status and sent time in search index after delivery | Worker indexing hook / event consumer | Deliver email; query search endpoint; verify document reflects status `sent` and accurate `sent_at` timestamp | Not started |
-| ES-12 | Scope search results to authenticated user or tenant | Search API query filter | Query search API as User A for a term matching User B's emails; verify zero results from other users are returned | Not started |
-| ES-13 | Document and test indexing failure resilience and recovery | Reindexing script & documentation | Stop Elasticsearch during scheduling, verify email sends successfully, restart ES, run recovery script, verify index is updated | Not started |
+| ES-01 | Create Elasticsearch index with explicit mapping | Search module index initialization | `ensureElasticsearchIndex()` creates `emails` index with typed mappings for keyword, text, dates. Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-02 | Index emails upon creation in PostgreSQL | Indexing service | `bulkIndexEmails` called on email scheduling. Document immediately indexable. Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-03 | Update index when email status changes | Search update service | `updateEmailStatusDoc` updates status, sent_at, and errors in Elasticsearch. Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-04 | Provide search endpoint with multi-field queries | `GET /api/search/emails` & `GET /api/emails/search` | Multi-field match query across subject, body, recipient with fuzziness. Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-05 | Support pagination in search results | Search API (`from`/`size`) | Supports `page` and `limit` with `total` and `totalPages` metadata. Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-06 | Enforce user and tenant isolation in search queries | Search service query builder | Filter clause strictly enforces `{ term: { user_id: userId } }`. Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-07 | Decouple email delivery from Elasticsearch availability | Asynchronous indexing queue/outbox | Non-blocking try/catch stores events in `scheduling_outbox` (`elasticsearch_index`). Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-08 | Recover missed index updates via reconciliation | Reconciliation / backfill script | `reconcileElasticsearchOutbox()` drains outbox and syncs missing documents. Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-09 | Make indexing idempotent | Document ID assignment | Uses deterministic email UUID as Elasticsearch document `_id`. Tested in `test/api/elasticsearch.test.ts`. | Verified |
+| ES-10 | Search newly scheduled emails before delivery | Search API & indexing service | Verified in `test/api/elasticsearch.test.ts`: newly scheduled emails are immediately searchable with status `scheduled`. | Verified |
+| ES-11 | Reflect updated status and sent time in search index after delivery | Worker indexing hook / event consumer | Verified in `test/api/elasticsearch.test.ts`: status filtering and document updates reflect `sent` and `sent_at`. | Verified |
+| ES-12 | Scope search results to authenticated user or tenant | Search API query filter | Verified in `test/api/elasticsearch.test.ts`: User B searching for User A's unique query returns 0 hits. | Verified |
+| ES-13 | Document and test indexing failure resilience and recovery | Reindexing script & documentation | Outbox fallback and recovery verified with live tests in `test/api/elasticsearch.test.ts`. | Verified |
 
 ---
 

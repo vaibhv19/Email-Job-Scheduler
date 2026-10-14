@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { withTransaction, query } from '@reachinbox/db';
 import { enqueueEmailJobsBatch, type EnqueueEmailJobParams } from '@reachinbox/redis';
 import { parseRecipients, type ScheduleEmailInput, RATE_LIMIT_DEFAULTS } from '@reachinbox/shared';
+import { bulkIndexEmails } from './elasticsearch.js';
 
 export interface ScheduledEmailRecord {
   id: string;
@@ -35,10 +36,11 @@ export async function scheduleEmails(
   // 1. Validate that the sender exists and belongs to the user, and retrieve rate limit configuration (RATE-06, RATE-07)
   const senderRes = await query<{
     id: string;
+    email: string;
     min_send_interval_ms: number;
     max_emails_per_hour: number;
   }>(
-    'SELECT id, min_send_interval_ms, max_emails_per_hour FROM senders WHERE id = $1 AND user_id = $2',
+    'SELECT id, email, min_send_interval_ms, max_emails_per_hour FROM senders WHERE id = $1 AND user_id = $2',
     [input.sender_id, userId],
   );
 
@@ -186,6 +188,22 @@ export async function scheduleEmails(
     await query('UPDATE scheduling_outbox SET processed_at = NOW() WHERE aggregate_id = ANY($1)', [
       emailIds,
     ]);
+
+    // Index emails in Elasticsearch
+    await bulkIndexEmails(
+      createdEmails.map((e) => ({
+        id: e.id,
+        user_id: e.user_id,
+        sender_id: e.sender_id,
+        sender_email: sender.email,
+        recipient_email: e.recipient_email,
+        subject: e.subject,
+        body: e.body,
+        status: e.status,
+        scheduled_at: new Date(e.scheduled_at).toISOString(),
+        created_at: new Date(e.created_at).toISOString(),
+      })),
+    );
   } catch (queueErr) {
     // If BullMQ fails, PostgreSQL transaction is already committed.
     // Outbox events remain with processed_at IS NULL for the outbox reconciler (BE-10).

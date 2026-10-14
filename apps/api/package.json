@@ -11,6 +11,7 @@
     "dev": "tsc && node dist/index.js"
   },
   "dependencies": {
+    "@elastic/elasticsearch": "^8.19.2",
     "@reachinbox/db": "*",
     "@reachinbox/redis": "*",
     "@reachinbox/shared": "*",

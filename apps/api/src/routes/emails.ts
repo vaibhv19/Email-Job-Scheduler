@@ -10,6 +10,7 @@ import {
   listSentEmails,
   getEmailById,
 } from '../services/email.js';
+import { searchEmails } from '../services/elasticsearch.js';
 import { reconcilePendingOutbox } from '../services/reconciliation.js';
 
 export const emailRouter = Router();
@@ -154,6 +155,42 @@ emailRouter.get(
         error: {
           code: 'INTERNAL_ERROR',
           message: 'Failed to retrieve sent emails',
+        },
+      });
+    }
+  },
+);
+
+/**
+ * GET /api/emails/search and GET /api/search/emails
+ * User-scoped full-text search against Elasticsearch (with PostgreSQL fallback)
+ */
+emailRouter.get(
+  ['/api/emails/search', '/api/search/emails'],
+  requireUser,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const q = (req.query.q || req.query.query) as string | undefined;
+      const status = req.query.status as string | undefined;
+      const senderId = req.query.sender_id as string | undefined;
+      const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+
+      const result = await searchEmails(req.user!.id, {
+        query: q,
+        status,
+        sender_id: senderId,
+        page,
+        limit,
+      });
+
+      res.status(200).json(result);
+    } catch (err) {
+      console.error('Error executing email search:', err);
+      res.status(500).json({
+        error: {
+          code: 'SEARCH_ERROR',
+          message: 'Failed to execute search query',
         },
       });
     }
