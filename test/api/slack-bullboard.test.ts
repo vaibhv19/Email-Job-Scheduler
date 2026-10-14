@@ -169,6 +169,7 @@ describe('Phase 9 — Slack OAuth, Rate-Limit Notifications, and Bull Board', ()
 
       // 1. Generate valid signed state for test user
       const signedState = signSlackState(testUserId, 'test-nonce-123');
+      expect(verifySlackState(signedState).valid).toBe(true);
 
       // 2. Mock global fetch for Slack's token exchange endpoint
       const originalFetch = global.fetch;

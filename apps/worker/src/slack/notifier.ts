@@ -30,20 +30,7 @@ export async function notifySlackQuotaExhausted(
   payload: QuotaAlertPayload,
 ): Promise<SlackNotificationResult> {
   try {
-    const redis = getRedisClient();
-    const utcHour = new Date().toISOString().substring(0, 13); // e.g. "2026-10-14T10"
-    const dedupKey = `slack_alert:${payload.senderId}:${utcHour}`;
-
-    // 1. Atomic deduplication: exactly one alert per sender per UTC hour window (SLACK-08)
-    const acquired = await redis.set(dedupKey, '1', 'EX', 3600, 'NX');
-    if (!acquired) {
-      console.log(
-        `[Slack] Rate limit alert already sent for sender ${payload.senderId} (${payload.senderEmail}) in window ${utcHour}. Skipping duplicate.`,
-      );
-      return { sent: false, reason: 'duplicate_suppressed' };
-    }
-
-    // 2. Resolve user's Slack connection from PostgreSQL (SLACK-04, SLACK-10)
+    // 1. Resolve user's Slack connection from PostgreSQL (SLACK-04, SLACK-09, SLACK-10)
     const connRes = await query<{
       team_id: string;
       team_name: string | null;
@@ -62,6 +49,19 @@ export async function notifySlackQuotaExhausted(
         `[Slack] No active Slack connection found for user ${payload.userId}. Skipping notification.`,
       );
       return { sent: false, reason: 'not_connected' };
+    }
+
+    // 2. Atomic deduplication: exactly one alert per sender per UTC hour window (SLACK-08)
+    const redis = getRedisClient();
+    const utcHour = new Date().toISOString().substring(0, 13); // e.g. "2026-10-14T10"
+    const dedupKey = `slack_alert:${payload.senderId}:${utcHour}`;
+
+    const acquired = await redis.set(dedupKey, '1', 'EX', 3600, 'NX');
+    if (!acquired) {
+      console.log(
+        `[Slack] Rate limit alert already sent for sender ${payload.senderId} (${payload.senderEmail}) in window ${utcHour}. Skipping duplicate.`,
+      );
+      return { sent: false, reason: 'duplicate_suppressed' };
     }
 
     const conn = connRes.rows[0];
