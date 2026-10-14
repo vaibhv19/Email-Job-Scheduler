@@ -1,6 +1,7 @@
+import crypto from 'crypto';
 import { withTransaction, query } from '@reachinbox/db';
 import { enqueueEmailJobsBatch, type EnqueueEmailJobParams } from '@reachinbox/redis';
-import { parseRecipients, type ScheduleEmailInput } from '@reachinbox/shared';
+import { parseRecipients, type ScheduleEmailInput, RATE_LIMIT_DEFAULTS } from '@reachinbox/shared';
 
 export interface ScheduledEmailRecord {
   id: string;
@@ -22,7 +23,8 @@ export interface ScheduleResult {
 }
 
 /**
- * Service orchestrating transactional email persistence and BullMQ delayed enqueueing (BE-01, BE-02, BE-03, BE-05, BE-07)
+ * Service orchestrating transactional email persistence, staggered batch scheduling,
+ * and BullMQ delayed enqueueing (BE-01..BE-07, RATE-13, RATE-16, RATE-20, RATE-21)
  */
 export async function scheduleEmails(
   userId: string,
@@ -30,9 +32,13 @@ export async function scheduleEmails(
   idempotencyKey?: string,
   requestHash?: string,
 ): Promise<ScheduleResult> {
-  // 1. Validate that the sender exists and belongs to the user
-  const senderRes = await query<{ id: string }>(
-    'SELECT id FROM senders WHERE id = $1 AND user_id = $2',
+  // 1. Validate that the sender exists and belongs to the user, and retrieve rate limit configuration (RATE-06, RATE-07)
+  const senderRes = await query<{
+    id: string;
+    min_send_interval_ms: number;
+    max_emails_per_hour: number;
+  }>(
+    'SELECT id, min_send_interval_ms, max_emails_per_hour FROM senders WHERE id = $1 AND user_id = $2',
     [input.sender_id, userId],
   );
 
@@ -41,6 +47,9 @@ export async function scheduleEmails(
     (error as unknown as { code: string }).code = 'SENDER_NOT_FOUND';
     throw error;
   }
+
+  const sender = senderRes.rows[0];
+  const minSendIntervalMs = sender.min_send_interval_ms ?? RATE_LIMIT_DEFAULTS.MIN_SEND_INTERVAL_MS;
 
   // 2. Resolve and deduplicate recipients (QA-12)
   const rawRecipients: string[] = [];
@@ -63,51 +72,82 @@ export async function scheduleEmails(
     throw error;
   }
 
-  const scheduledDate = new Date(input.scheduled_at);
+  const baseScheduledDate = new Date(input.scheduled_at);
 
-  // 3. Transactional PostgreSQL persistence: Email records + Outbox events (BE-02, BE-10)
+  // 3. Transactional PostgreSQL persistence using chunked bulk inserts (BE-02, BE-10, RATE-13, RATE-16)
+  // Avoids holding open single-row lock iterations for large batches (up to 1,000+ recipients)
   const createdEmails = await withTransaction(async (client) => {
     const emailRows: ScheduledEmailRecord[] = [];
+    const CHUNK_SIZE = 100;
 
-    for (let i = 0; i < recipients.length; i++) {
-      const recipient = recipients[i];
-      const itemKey = idempotencyKey ? `${idempotencyKey}:${i}` : null;
+    for (let c = 0; c < recipients.length; c += CHUNK_SIZE) {
+      const chunk = recipients.slice(c, c + CHUNK_SIZE);
+      const emailValues: unknown[] = [];
+      const emailPlaceholders: string[] = [];
+
+      for (let j = 0; j < chunk.length; j++) {
+        const i = c + j;
+        const recipient = chunk[j];
+        const emailId = crypto.randomUUID();
+        // Stagger scheduled timestamps by min_send_interval_ms for batches (RATE-16, RATE-20, RATE-21)
+        const recipientScheduledDate =
+          recipients.length > 1
+            ? new Date(baseScheduledDate.getTime() + i * minSendIntervalMs)
+            : baseScheduledDate;
+        const itemKey = idempotencyKey ? `${idempotencyKey}:${i}` : null;
+
+        const offset = j * 9;
+        emailPlaceholders.push(
+          `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, 'scheduled', $${offset + 8}, $${offset + 9})`,
+        );
+        emailValues.push(
+          emailId,
+          userId,
+          input.sender_id,
+          recipient,
+          input.subject,
+          input.body,
+          recipientScheduledDate,
+          itemKey,
+          emailId, // bullmq_job_id matches email.id deterministically (BE-07)
+        );
+      }
 
       const emailInsert = await client.query<ScheduledEmailRecord>(
         `INSERT INTO emails (
-          user_id, sender_id, recipient_email, subject, body, scheduled_at, status, idempotency_key
-        ) VALUES ($1, $2, $3, $4, $5, $6, 'scheduled', $7)
-        RETURNING id, user_id, sender_id, recipient_email, subject, body, scheduled_at, status, created_at;`,
-        [userId, input.sender_id, recipient, input.subject, input.body, scheduledDate, itemKey],
+          id, user_id, sender_id, recipient_email, subject, body, scheduled_at, status, idempotency_key, bullmq_job_id
+        ) VALUES ${emailPlaceholders.join(', ')}
+        RETURNING id, user_id, sender_id, recipient_email, subject, body, scheduled_at, status, bullmq_job_id, created_at;`,
+        emailValues,
       );
 
-      const email = emailInsert.rows[0];
+      emailRows.push(...emailInsert.rows);
 
-      // Update bullmq_job_id to match email.id deterministically (BE-07)
-      await client.query('UPDATE emails SET bullmq_job_id = $1 WHERE id = $2', [
-        email.id,
-        email.id,
-      ]);
-      email.bullmq_job_id = email.id;
+      // Multi-row insert into scheduling_outbox for guaranteed recovery (BE-10)
+      const outboxPlaceholders: string[] = [];
+      const outboxValues: unknown[] = [];
+      for (let j = 0; j < emailInsert.rows.length; j++) {
+        const row = emailInsert.rows[j];
+        const offset = j * 2;
+        outboxPlaceholders.push(`('EMAIL_SCHEDULED', $${offset + 1}, $${offset + 2})`);
+        outboxValues.push(
+          row.id,
+          JSON.stringify({
+            emailId: row.id,
+            senderId: row.sender_id,
+            userId,
+            recipientEmail: row.recipient_email,
+            subject: row.subject,
+            scheduledAt: new Date(row.scheduled_at).toISOString(),
+          }),
+        );
+      }
 
-      // Insert into scheduling_outbox
       await client.query(
         `INSERT INTO scheduling_outbox (event_type, aggregate_id, payload)
-         VALUES ('EMAIL_SCHEDULED', $1, $2);`,
-        [
-          email.id,
-          JSON.stringify({
-            emailId: email.id,
-            senderId: email.sender_id,
-            userId,
-            recipientEmail: email.recipient_email,
-            subject: email.subject,
-            scheduledAt: scheduledDate.toISOString(),
-          }),
-        ],
+         VALUES ${outboxPlaceholders.join(', ')};`,
+        outboxValues,
       );
-
-      emailRows.push(email);
     }
 
     if (idempotencyKey && requestHash) {
@@ -128,14 +168,14 @@ export async function scheduleEmails(
     return emailRows;
   });
 
-  // 4. Enqueue BullMQ delayed jobs with deterministic job IDs (BE-05, BE-07)
+  // 4. Enqueue BullMQ delayed jobs with deterministic job IDs using addBulk (BE-05, BE-07, RATE-13)
   const jobParams: EnqueueEmailJobParams[] = createdEmails.map((e) => ({
     emailId: e.id,
     senderId: e.sender_id,
     userId: e.user_id,
     recipientEmail: e.recipient_email,
     subject: e.subject,
-    scheduledAt: scheduledDate,
+    scheduledAt: new Date(e.scheduled_at),
   }));
 
   try {

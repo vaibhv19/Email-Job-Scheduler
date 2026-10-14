@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { query, closePool } from '@reachinbox/db';
 import {
   closeRedis,
@@ -6,6 +6,8 @@ import {
   enqueueEmailJob,
   getEmailQueue,
   DEFAULT_JOB_ATTEMPTS,
+  getRedisClient,
+  resetSenderRateLimits,
 } from '@reachinbox/redis';
 import {
   DEFAULT_DEV_USER_ID,
@@ -21,6 +23,10 @@ import crypto from 'crypto';
 describe('Retry Exhaustion & Terminal Failure Handling (RATE-01, SMTP-06, BE-11)', () => {
   beforeAll(async () => {
     await ensureDefaultDevUser();
+  });
+
+  beforeEach(async () => {
+    await resetSenderRateLimits(getRedisClient(), DEFAULT_DEV_SENDER_ID);
   });
 
   afterAll(async () => {

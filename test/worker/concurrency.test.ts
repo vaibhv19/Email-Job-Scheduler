@@ -1,6 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { query, closePool, getPool } from '@reachinbox/db';
-import { closeRedis, closeQueue, createEmailWorker } from '@reachinbox/redis';
+import {
+  closeRedis,
+  closeQueue,
+  createEmailWorker,
+  getRedisClient,
+  resetSenderRateLimits,
+} from '@reachinbox/redis';
 import { runStartupReconciliation } from '../../apps/worker/src/reconciler.js';
 import {
   DEFAULT_DEV_USER_ID,
@@ -19,6 +25,10 @@ import crypto from 'crypto';
 describe('Worker Concurrency & Atomic Claiming (BE-12, QA-05, RATE-01)', () => {
   beforeAll(async () => {
     await ensureDefaultDevUser();
+  });
+
+  beforeEach(async () => {
+    await resetSenderRateLimits(getRedisClient(), DEFAULT_DEV_SENDER_ID);
   });
 
   afterAll(async () => {

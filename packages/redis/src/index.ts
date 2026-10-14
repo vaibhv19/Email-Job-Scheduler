@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 export * from './queue.js';
+export * from './rate-limiter.js';
+export type RedisClient = Redis;
 
 // Attempt to load .env from workspace root if REDIS_URL is not set
 if (!process.env.REDIS_URL) {

@@ -1,6 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { query, closePool } from '@reachinbox/db';
-import { closeRedis, closeQueue } from '@reachinbox/redis';
+import {
+  closeRedis,
+  closeQueue,
+  getRedisClient,
+  resetSenderRateLimits,
+} from '@reachinbox/redis';
 import {
   DEFAULT_DEV_USER_ID,
   DEFAULT_DEV_SENDER_ID,
@@ -35,6 +40,13 @@ describe('Worker Engine: SMTP Delivery & Attempt Tracking (SMTP-01, SMTP-02, SMT
         100,
       ],
     );
+  });
+
+  beforeEach(async () => {
+    await Promise.all([
+      resetSenderRateLimits(getRedisClient(), DEFAULT_DEV_SENDER_ID),
+      resetSenderRateLimits(getRedisClient(), secondSenderId),
+    ]);
   });
 
   afterAll(async () => {

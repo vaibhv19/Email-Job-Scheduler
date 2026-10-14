@@ -1,7 +1,7 @@
-import { Queue, Worker, type JobsOptions, type Job, type Processor } from 'bullmq';
+import { Queue, Worker, DelayedError, type JobsOptions, type Job, type Processor } from 'bullmq';
 import { getRedisClient, createDedicatedRedisClient } from './index.js';
 
-export { Worker, Job, type Processor };
+export { Worker, Job, type Processor, DelayedError };
 export const EMAIL_QUEUE_NAME = 'emails';
 
 let globalEmailQueue: Queue | null = null;

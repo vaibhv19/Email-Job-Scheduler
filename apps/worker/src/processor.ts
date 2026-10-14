@@ -1,5 +1,13 @@
 import { query, withTransaction } from '@reachinbox/db';
-import { type Job, DEFAULT_JOB_ATTEMPTS } from '@reachinbox/redis';
+import {
+  type Job,
+  DEFAULT_JOB_ATTEMPTS,
+  getRedisClient,
+  reserveRateLimitSlot,
+  refundRateLimitQuota,
+  DelayedError,
+} from '@reachinbox/redis';
+import { RATE_LIMIT_DEFAULTS } from '@reachinbox/shared';
 import * as mailer from './mailer.js';
 
 export interface EmailJobData {
@@ -27,6 +35,8 @@ interface SenderRecord {
   email: string;
   display_name: string;
   smtp_config_ref: string;
+  min_send_interval_ms?: number;
+  max_emails_per_hour?: number;
 }
 
 /**
@@ -78,10 +88,13 @@ export async function checkPreviousAcceptedAttempt(
 }
 
 /**
- * Processes a single email delivery job received from BullMQ (BE-11, SMTP-01, SMTP-03, SMTP-06)
+ * Processes a single email delivery job received from BullMQ (BE-11, SMTP-01, SMTP-03, SMTP-06, RATE-02..RATE-21)
  */
-export async function processEmailJob(job: Job<EmailJobData>): Promise<{
-  status: 'skipped' | 'sent' | 'failed' | 'retry_scheduled';
+export async function processEmailJob(
+  job: Job<EmailJobData>,
+  token?: string,
+): Promise<{
+  status: 'skipped' | 'sent' | 'failed' | 'retry_scheduled' | 'deferred';
   emailId: string;
   attemptId?: string;
   previewUrl?: string;
@@ -107,9 +120,9 @@ export async function processEmailJob(job: Job<EmailJobData>): Promise<{
     return { status: 'skipped', emailId };
   }
 
-  // 3. Resolve sender details
+  // 3. Resolve sender details and rate limit configuration (RATE-06, RATE-07)
   const senderRes = await query<SenderRecord>(
-    'SELECT id, email, display_name, smtp_config_ref FROM senders WHERE id = $1',
+    'SELECT id, email, display_name, smtp_config_ref, min_send_interval_ms, max_emails_per_hour FROM senders WHERE id = $1',
     [email.sender_id],
   );
 
@@ -126,6 +139,50 @@ export async function processEmailJob(job: Job<EmailJobData>): Promise<{
   }
 
   const sender = senderRes.rows[0];
+  const minSendIntervalMs = sender.min_send_interval_ms ?? RATE_LIMIT_DEFAULTS.MIN_SEND_INTERVAL_MS;
+  const maxEmailsPerHour = sender.max_emails_per_hour ?? RATE_LIMIT_DEFAULTS.MAX_EMAILS_PER_HOUR;
+
+  // 4. Atomically evaluate and reserve rate limit slot (RATE-02..RATE-06, RATE-09..RATE-12)
+  const redisClient = getRedisClient();
+  const reservation = await reserveRateLimitSlot(redisClient, {
+    senderId: sender.id,
+    emailId,
+    minSendIntervalMs,
+    maxEmailsPerHour,
+  });
+
+  const workerToken = token || job.token;
+
+  if (reservation.status === 'quota_exhausted') {
+    console.log(
+      `[Worker] Hourly quota exhausted for sender ${sender.id} (${reservation.currentCount}/${reservation.maxQuota} emails/hr). Deferring email ${emailId} to next UTC hour (${new Date(reservation.nextEligibleTime).toISOString()}, delay: ${reservation.delayMs}ms).`,
+    );
+    // Revert status from processing back to 'scheduled' in PostgreSQL (RATE-11, RATE-17)
+    await query(
+      `UPDATE emails SET status = 'scheduled', updated_at = NOW() WHERE id = $1 AND status = 'processing'`,
+      [emailId],
+    );
+    if (typeof job.moveToDelayed === 'function') {
+      await job.moveToDelayed(reservation.nextEligibleTime, workerToken);
+    }
+    throw new DelayedError();
+  }
+
+  if (reservation.status === 'rate_limited') {
+    console.log(
+      `[Worker] Inter-send spacing active for sender ${sender.id} (${reservation.waitMs}ms remaining). Deferring email ${emailId} to ${new Date(reservation.nextEligibleTime).toISOString()} (delay: ${reservation.delayMs}ms).`,
+    );
+    // Revert status from processing back to 'scheduled' in PostgreSQL (RATE-02, RATE-03, RATE-11)
+    await query(
+      `UPDATE emails SET status = 'scheduled', updated_at = NOW() WHERE id = $1 AND status = 'processing'`,
+      [emailId],
+    );
+    if (typeof job.moveToDelayed === 'function') {
+      await job.moveToDelayed(reservation.nextEligibleTime, workerToken);
+    }
+    throw new DelayedError();
+  }
+
   const fromAddress = sender.display_name
     ? `"${sender.display_name}" <${sender.email}>`
     : sender.email;
@@ -233,6 +290,13 @@ export async function processEmailJob(job: Job<EmailJobData>): Promise<{
         );
       });
 
+      // Refund quota slot on terminal retry exhaustion when non-acceptance is established (RATE-12)
+      await refundRateLimitQuota(redisClient, {
+        senderId: sender.id,
+        emailId,
+        windowKey: reservation.windowKey,
+      });
+
       console.error(
         `[Worker] Retry exhausted for email ${email.id} after ${job.attemptsMade + 1}/${maxAttempts} attempts: ${sendResult.errorMessage}`,
       );
@@ -277,6 +341,13 @@ export async function processEmailJob(job: Job<EmailJobData>): Promise<{
        WHERE id = $2`,
       [errorJson, email.id],
     );
+  });
+
+  // Refund quota on permanent failure since send was rejected (RATE-12)
+  await refundRateLimitQuota(redisClient, {
+    senderId: sender.id,
+    emailId,
+    windowKey: reservation.windowKey,
   });
 
   console.error(`[Worker] Permanent error sending email ${email.id}: ${sendResult.errorMessage}`);
