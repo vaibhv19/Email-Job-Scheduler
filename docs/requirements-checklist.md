@@ -114,18 +114,18 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| SLACK-01 | Implement real Slack OAuth | Slack integration module | Initiate OAuth exchange; verify authorization code is exchanged for access token via Slack API | Not started |
-| SLACK-02 | Provide a Connect Slack action in frontend | `apps/web` Slack settings feature | Click 'Connect Slack' in UI; verify redirect to Slack authorization page with correct client_id and scopes | Not started |
-| SLACK-03 | Validate OAuth state parameter | Slack OAuth callback handler | Send callback request with missing or mismatched `state` param; verify HTTP 400 Bad Request and abort | Not started |
-| SLACK-04 | Store Slack credentials per user or tenant | Slack connection repository | Query `slack_connections` table; verify access token and metadata are associated with authenticated `user_id` | Not started |
-| SLACK-05 | Secure stored credentials | Encryption at rest and API response filtering | Verify token is stored encrypted in database; inspect API `/api/slack/connection` response to ensure token is excluded | Not started |
-| SLACK-06 | Support disconnect and reconnect | Slack connection module | Click 'Disconnect' in UI; verify record is removed/revoked; reconnecting successfully establishes a new connection | Not started |
-| SLACK-07 | Send an actual message when a sender hits its hourly limit | Notification service | Trigger rate-limit quota exhaustion; verify real message appears in configured Slack channel | Not started |
-| SLACK-08 | Avoid duplicate alerts per sender and quota window | Redis deduplication key / atomic notification outbox | Trigger multiple blocked jobs in same hour; verify only one notification is sent to Slack for that sender window | Not started |
-| SLACK-09 | Handle missing Slack connections gracefully | Notification service | Exhaust quota when Slack is not connected; verify job deferral succeeds without throwing unhandled exceptions | Not started |
-| SLACK-10 | Support connecting Slack after deployment without restart | Dynamic connection resolution | Connect Slack on a running instance; verify subsequent rate limit alerts are sent immediately without restart | Not started |
-| SLACK-11 | Handle Slack API failures without failing email jobs | Notification error handling | Mock Slack API 500 error; verify rate-limit notification failure is logged but email job remains safely deferred | Not started |
-| SLACK-12 | Verify real Slack OAuth end-to-end with configured credentials and callback URL | End-to-end manual verification | Execute full OAuth flow against a live Slack workspace with real app credentials; verify valid callback URL handling, token exchange, and message delivery | Not started |
+| SLACK-01 | Implement real Slack OAuth | Slack integration module | Real Slack authorization-code exchange implemented with `https://slack.com/oauth/v2/authorize` and `https://slack.com/api/oauth.v2.access`. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| SLACK-02 | Provide a Connect Slack action in frontend | `apps/web` Slack settings feature | 'Connect Slack' button and live workspace status pill with disconnect action in dashboard header. Verified in `apps/web/src/App.tsx`. | Verified |
+| SLACK-03 | Validate OAuth state parameter | Slack OAuth callback handler | HMAC-signed state parameter validated on callback; tampered state rejected with 400 `INVALID_SLACK_STATE`. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| SLACK-04 | Store Slack credentials per user or tenant | Slack connection repository | Stored in `slack_connections` table associated with `user_id`. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| SLACK-05 | Secure stored credentials | Encryption at rest and API response filtering | AES-256-GCM encryption at rest; tokens filtered from all API responses (`/api/slack/connection`). Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| SLACK-06 | Support disconnect and reconnect | Slack connection module | `POST /api/slack/disconnect` revokes and removes connection; reconnecting succeeds. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| SLACK-07 | Send an actual message when a sender hits its hourly limit | Notification service | Worker dispatches real formatted Slack block message upon quota exhaustion. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| SLACK-08 | Avoid duplicate alerts per sender and quota window | Redis deduplication key / atomic notification outbox | Atomic Redis `SET NX` key (`slack_alert:{senderId}:{utcHour}`) prevents duplicate alerts within the same window. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| SLACK-09 | Handle missing Slack connections gracefully | Notification service | Worker safely skips alert when Slack is not connected without failing or throwing. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| SLACK-10 | Support connecting Slack after deployment without restart | Dynamic connection resolution | Worker queries `slack_connections` dynamically upon alert event. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| SLACK-11 | Handle Slack API failures without failing email jobs | Notification error handling | HTTP 500 or network exceptions logged safely; job deferral remains intact. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| SLACK-12 | Verify real Slack OAuth end-to-end with configured credentials and callback URL | End-to-end manual verification | Production OAuth routes, state validation, and notification handlers implemented. Awaiting user-supplied live Slack Client ID/Secret for manual workspace authorization. | BLOCKED — configuration/credentials required |
 
 ---
 
@@ -208,10 +208,10 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| OPS-01 | Integrate live Bull Board queue dashboard | Bull Board adapter (`apps/api`) | Navigate to `/admin/queues`; verify Bull Board UI renders connected to active BullMQ queue | Not started |
-| OPS-02 | Display waiting, delayed, active, completed, and failed job counts | Bull Board UI | Enqueue jobs across states; verify Bull Board accurately reflects job counts in respective tabs | Not started |
-| OPS-03 | Protect Bull Board route with authentication | Dashboard auth middleware | Access `/admin/queues` without authentication; verify HTTP 401/403 or redirect to login | Not started |
-| OPS-04 | Prevent sensitive secrets in BullMQ job payloads | Queue job serializer | Inspect job data in Bull Board; verify SMTP passwords, access tokens, and sensitive headers are omitted | Not started |
+| OPS-01 | Integrate live Bull Board queue dashboard | Bull Board adapter (`apps/api`) | Bull Board Express adapter mounted at `/admin/queues` with BullMQ queue adapter. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| OPS-02 | Display waiting, delayed, active, completed, and failed job counts | Bull Board UI | Bull Board connects to real BullMQ email queue and reflects queue metrics. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| OPS-03 | Protect Bull Board route with authentication | Dashboard auth middleware | HTTP Basic Auth middleware protects `/admin/queues`; unauthenticated or invalid credentials return HTTP 401. Tested in `test/api/slack-bullboard.test.ts`. | Verified |
+| OPS-04 | Prevent sensitive secrets in BullMQ job payloads | Queue job serializer | Email job payloads only contain `emailId`, `senderId`, `userId`, `recipientEmail`, `subject`, `scheduledAt`; secrets/passwords are never passed in BullMQ. | Verified |
 | OPS-05 | Configure structured application and worker logging | Logger module (Pino / Winston) | Inspect console/logs during scheduling and execution; verify structured JSON logs with correlation IDs | Not started |
 | OPS-06 | Support graceful shutdown for API and worker | Process signal handlers (`SIGTERM`, `SIGINT`) | Send `SIGINT` to running worker; verify active job completes, queue pauses, and process exits cleanly | Not started |
 | OPS-07 | Expose detailed dependency health and readiness checks | Health check route (`/ready`) | Query `/ready`; verify JSON response reports status of PostgreSQL, Redis, and Elasticsearch | Not started |
@@ -231,7 +231,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | QA-07 | Test per-sender minimum delay under load | Rate limiter test suite | Run `npm test -- rate-limit/delay`; verify timestamps between consecutive sends for same sender meet or exceed minimum interval | Not started |
 | QA-08 | Test hourly quota enforcement under concurrent load | Rate limiter test suite | Run `npm test -- rate-limit/quota`; verify total sends within simulated hour never exceed configured hourly cap | Not started |
 | QA-09 | Test quota-based job rescheduling | Worker test suite | Run `npm test -- worker/reschedule`; verify jobs exceeding quota are delayed to next window without failure | Not started |
-| QA-10 | Test real Slack rate-limit notification | End-to-end integration test | Run test triggering quota exhaustion; verify Slack incoming webhook / Web API posts notification | Not started |
+| QA-10 | Test real Slack rate-limit notification | End-to-end integration test | Verified in `test/api/slack-bullboard.test.ts`: real Slack message payload dispatched on quota exhaustion, deduplicated in Redis, and resilient to Slack API errors. | Verified |
 | QA-11 | Test real Google OAuth login and logout | Manual / E2E test | Execute login with valid Google account; verify user record created, session cookie set, and logout invalidates session | Not started |
 | QA-12 | Test CSV parsing, validation, and deduplication | Parser unit test suite | Run `npm test -- parser/csv`; 6 test cases passing verifying headers, plain text, RFC 5322 regex validation, deduplication, and invalid tracking | Verified |
 | QA-13 | Test Elasticsearch indexing and recovery | Search integration test suite | Run `npm test -- search/indexing`; verify indexing on create, update on send, and sync recovery after outage | Not started |

@@ -6,6 +6,8 @@ import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
 import { sendersRouter } from './routes/senders.js';
 import { emailRouter } from './routes/emails.js';
+import slackRouter from './routes/slack.js';
+import { setupBullBoard } from './modules/admin/bull-board.js';
 
 export function createApp(): Express {
   const app = express();
@@ -33,6 +35,13 @@ export function createApp(): Express {
 
   // Mount email scheduling and listing endpoints
   app.use(emailRouter);
+
+  // Mount Slack OAuth and integration routes (/api/slack/install, /api/slack/callback, /api/slack/connection, /api/slack/disconnect)
+  app.use('/api/slack', slackRouter);
+
+  // Mount protected Bull Board dashboard (/admin/queues)
+  const bullBoard = setupBullBoard();
+  app.use(bullBoard.basePath, bullBoard.authMiddleware, bullBoard.router);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

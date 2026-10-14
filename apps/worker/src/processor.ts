@@ -9,6 +9,7 @@ import {
 } from '@reachinbox/redis';
 import { RATE_LIMIT_DEFAULTS } from '@reachinbox/shared';
 import * as mailer from './mailer.js';
+import { notifySlackQuotaExhausted } from './slack/notifier.js';
 
 export interface EmailJobData {
   emailId: string;
@@ -162,6 +163,16 @@ export async function processEmailJob(
       `UPDATE emails SET status = 'scheduled', updated_at = NOW() WHERE id = $1 AND status = 'processing'`,
       [emailId],
     );
+    // Notify connected Slack workspace about quota exhaustion (SLACK-07..SLACK-11)
+    await notifySlackQuotaExhausted({
+      senderId: sender.id,
+      senderEmail: sender.email,
+      userId: email.user_id,
+      maxQuota: reservation.maxQuota,
+      currentCount: reservation.currentCount,
+      nextEligibleTime: reservation.nextEligibleTime,
+    });
+
     if (typeof job.moveToDelayed === 'function') {
       await job.moveToDelayed(reservation.nextEligibleTime, workerToken);
     }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 export * from './recipients.js';
+export * from './crypto.js';
 
 /**
  * ReachInbox Shared Constants and Types

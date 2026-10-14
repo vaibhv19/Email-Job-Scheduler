@@ -78,6 +78,14 @@ export const App: React.FC = () => {
     message: string;
   } | null>(null);
 
+  // Slack Connection State (SLACK-02, SLACK-04, SLACK-06)
+  const [slackConn, setSlackConn] = useState<{
+    connected: boolean;
+    team_name?: string | null;
+    channel_name?: string | null;
+  } | null>(null);
+  const [isDisconnectingSlack, setIsDisconnectingSlack] = useState(false);
+
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -175,6 +183,46 @@ export const App: React.FC = () => {
     }
   }, [user, debouncedSearch, statusFilter, activeTab, page, handleSessionExpired]);
 
+  // Fetch Slack Connection status (SLACK-04, SLACK-05)
+  const loadSlackConnection = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await fetch('/api/slack/connection', { credentials: 'include' });
+      if (res.ok) {
+        const json = await res.json();
+        setSlackConn(json.data || { connected: false });
+      }
+    } catch (err) {
+      console.error('Failed to load Slack connection status:', err);
+    }
+  }, [user]);
+
+  // Handle Slack Disconnect (SLACK-06)
+  const handleDisconnectSlack = async () => {
+    if (!confirm('Are you sure you want to disconnect this Slack workspace? Rate-limit notifications will no longer be delivered.')) {
+      return;
+    }
+    setIsDisconnectingSlack(true);
+    try {
+      const res = await fetch('/api/slack/disconnect', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok) {
+        setSlackConn({ connected: false });
+        setComposeFeedback({
+          type: 'success',
+          message: 'Slack workspace disconnected successfully.',
+        });
+      }
+    } catch (err) {
+      console.error('Failed to disconnect Slack workspace:', err);
+    } finally {
+      setIsDisconnectingSlack(false);
+    }
+  };
+
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const errorParam = urlParams.get('error');
@@ -182,20 +230,33 @@ export const App: React.FC = () => {
       setAuthError(decodeURIComponent(errorParam));
       window.history.replaceState({}, document.title, window.location.pathname);
     }
+
+    // Check Slack OAuth redirect parameters (SLACK-01, SLACK-02)
+    if (urlParams.get('slack_connected') === 'true') {
+      setComposeFeedback({
+        type: 'success',
+        message: '🎉 Slack workspace connected! Hourly rate-limit alerts will now be sent to your Slack workspace.',
+      });
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (urlParams.get('slack_error')) {
+      const slackErr = urlParams.get('slack_error');
+      setComposeFeedback({
+        type: 'error',
+        message: `Slack authorization failed: ${slackErr}`,
+      });
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     checkAuth();
   }, [checkAuth]);
 
   useEffect(() => {
     if (user) {
       loadSenders();
-    }
-  }, [user, loadSenders]);
-
-  useEffect(() => {
-    if (user) {
       loadEmails();
+      loadSlackConnection();
     }
-  }, [user, loadEmails]);
+  }, [user, loadSenders, loadEmails, loadSlackConnection]);
 
   // Handle Google Sign In
   const handleGoogleSignIn = () => {
@@ -483,7 +544,46 @@ export const App: React.FC = () => {
           </div>
 
           {/* Action Buttons & User Profile */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2.5">
+            {/* Bull Board Monitoring Link (OPS-01) */}
+            <a
+              href="/admin/queues"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="py-1.5 px-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 text-slate-400 hover:text-indigo-300 text-xs font-medium items-center space-x-1.5 transition hidden lg:flex"
+              title="Open Bull Board Queue Monitor"
+            >
+              <span>📊</span>
+              <span>Bull Board</span>
+            </a>
+
+            {/* Slack Connection Button/Pill (SLACK-02, SLACK-06) */}
+            {slackConn?.connected ? (
+              <div className="flex items-center space-x-1.5 bg-slate-800/80 border border-emerald-500/30 rounded-full py-1 px-3 text-xs text-emerald-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="hidden sm:inline font-medium">
+                  {slackConn.team_name ? `Slack: ${slackConn.team_name}` : 'Slack Connected'}
+                </span>
+                <button
+                  onClick={handleDisconnectSlack}
+                  disabled={isDisconnectingSlack}
+                  title="Disconnect Slack workspace"
+                  className="text-slate-400 hover:text-red-400 ml-1 text-xs transition cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <a
+                href="/api/slack/install"
+                className="py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-300 hover:text-white text-xs font-medium flex items-center space-x-1.5 transition"
+                title="Connect Slack workspace to receive rate-limit alerts"
+              >
+                <span>💬</span>
+                <span className="hidden sm:inline">Connect Slack</span>
+              </a>
+            )}
+
             <button
               onClick={openComposeModal}
               id="compose-btn"
