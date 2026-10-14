@@ -3,13 +3,19 @@ import type { Server } from 'http';
 import { createApp } from '../../apps/api/src/app.js';
 import { query, closePool } from '@reachinbox/db';
 import { closeQueue, closeRedis } from '@reachinbox/redis';
-import { DEFAULT_DEV_SENDER_ID } from '../../apps/api/src/middleware/auth.js';
+import { DEFAULT_DEV_SENDER_ID, DEFAULT_DEV_USER_ID, ensureDefaultDevUser } from '../../apps/api/src/middleware/auth.js';
+import { createSession } from '../../apps/api/src/modules/auth/session.js';
 
 describe('API Idempotency and Conflict Detection (BE-08, QA-04)', () => {
   let server: Server;
   let baseUrl: string;
+  let sessionCookie: string;
 
   beforeAll(async () => {
+    await ensureDefaultDevUser();
+    const { sessionToken } = await createSession(DEFAULT_DEV_USER_ID);
+    sessionCookie = `reachinbox_session=${sessionToken}`;
+
     const app = createApp();
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => {
@@ -46,6 +52,7 @@ describe('API Idempotency and Conflict Detection (BE-08, QA-04)', () => {
       headers: {
         'Content-Type': 'application/json',
         'Idempotency-Key': idempotencyKey,
+        Cookie: sessionCookie,
       },
       body: JSON.stringify(payload),
     });
@@ -68,6 +75,7 @@ describe('API Idempotency and Conflict Detection (BE-08, QA-04)', () => {
       headers: {
         'Content-Type': 'application/json',
         'Idempotency-Key': idempotencyKey,
+        Cookie: sessionCookie,
       },
       body: JSON.stringify(payload),
     });
@@ -103,6 +111,7 @@ describe('API Idempotency and Conflict Detection (BE-08, QA-04)', () => {
       headers: {
         'Content-Type': 'application/json',
         'Idempotency-Key': idempotencyKey,
+        Cookie: sessionCookie,
       },
       body: JSON.stringify(payload1),
     });
@@ -122,6 +131,7 @@ describe('API Idempotency and Conflict Detection (BE-08, QA-04)', () => {
       headers: {
         'Content-Type': 'application/json',
         'Idempotency-Key': idempotencyKey,
+        Cookie: sessionCookie,
       },
       body: JSON.stringify(payload2),
     });
@@ -149,6 +159,7 @@ describe('API Idempotency and Conflict Detection (BE-08, QA-04)', () => {
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key': idempotencyKey,
+          Cookie: sessionCookie,
         },
         body: JSON.stringify(payload),
       });

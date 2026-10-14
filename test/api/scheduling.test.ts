@@ -3,13 +3,19 @@ import type { Server } from 'http';
 import { createApp } from '../../apps/api/src/app.js';
 import { query, closePool } from '@reachinbox/db';
 import { getEmailQueue, closeQueue, closeRedis } from '@reachinbox/redis';
-import { DEFAULT_DEV_SENDER_ID, DEFAULT_DEV_USER_ID } from '../../apps/api/src/middleware/auth.js';
+import { DEFAULT_DEV_SENDER_ID, DEFAULT_DEV_USER_ID, ensureDefaultDevUser } from '../../apps/api/src/middleware/auth.js';
+import { createSession } from '../../apps/api/src/modules/auth/session.js';
 
 describe('Email Scheduling and Queue Producer (BE-01, BE-02, BE-03, BE-05, BE-07, BE-14, BE-15)', () => {
   let server: Server;
   let baseUrl: string;
+  let sessionCookie: string;
 
   beforeAll(async () => {
+    await ensureDefaultDevUser();
+    const { sessionToken } = await createSession(DEFAULT_DEV_USER_ID);
+    sessionCookie = `reachinbox_session=${sessionToken}`;
+
     const app = createApp();
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => {
@@ -35,7 +41,7 @@ describe('Email Scheduling and Queue Producer (BE-01, BE-02, BE-03, BE-05, BE-07
 
     const res = await fetch(`${baseUrl}/api/emails/schedule`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Cookie: sessionCookie },
       body: JSON.stringify({
         sender_id: DEFAULT_DEV_SENDER_ID,
         recipient_email: recipient,
@@ -87,7 +93,7 @@ describe('Email Scheduling and Queue Producer (BE-01, BE-02, BE-03, BE-05, BE-07
 
     const res = await fetch(`${baseUrl}/api/emails/schedule`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Cookie: sessionCookie },
       body: JSON.stringify({
         sender_id: DEFAULT_DEV_SENDER_ID,
         recipient_emails: recipients,
@@ -121,7 +127,9 @@ describe('Email Scheduling and Queue Producer (BE-01, BE-02, BE-03, BE-05, BE-07
   });
 
   it('lists scheduled emails with pagination metadata (BE-14)', async () => {
-    const res = await fetch(`${baseUrl}/api/emails/scheduled?page=1&limit=2`);
+    const res = await fetch(`${baseUrl}/api/emails/scheduled?page=1&limit=2`, {
+      headers: { Cookie: sessionCookie },
+    });
     expect(res.status).toBe(200);
 
     const body = (await res.json()) as {
@@ -141,7 +149,7 @@ describe('Email Scheduling and Queue Producer (BE-01, BE-02, BE-03, BE-05, BE-07
     const futureDate = new Date(Date.now() + 600000).toISOString();
     const createRes = await fetch(`${baseUrl}/api/emails/schedule`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Cookie: sessionCookie },
       body: JSON.stringify({
         sender_id: DEFAULT_DEV_SENDER_ID,
         recipient_email: 'owner@example.com',
@@ -154,13 +162,15 @@ describe('Email Scheduling and Queue Producer (BE-01, BE-02, BE-03, BE-05, BE-07
     const emailId = created.data.id;
 
     // 2. Fetch by owner -> 200 OK
-    const ownerRes = await fetch(`${baseUrl}/api/emails/${emailId}`);
+    const ownerRes = await fetch(`${baseUrl}/api/emails/${emailId}`, {
+      headers: { Cookie: sessionCookie },
+    });
     expect(ownerRes.status).toBe(200);
     const ownerBody = (await ownerRes.json()) as { email: { id: string; user_id: string } };
     expect(ownerBody.email.id).toBe(emailId);
     expect(ownerBody.email.user_id).toBe(DEFAULT_DEV_USER_ID);
 
-    // 3. Create another user in DB
+    // 3. Create another user in DB with a separate real session
     const otherUserId = '00000000-0000-0000-0000-000000000099';
     await query(
       `INSERT INTO users (id, google_subject, email, name)
@@ -168,11 +178,16 @@ describe('Email Scheduling and Queue Producer (BE-01, BE-02, BE-03, BE-05, BE-07
        ON CONFLICT (id) DO NOTHING;`,
       [otherUserId, 'other_google_sub', 'other@reachinbox.test', 'Other User'],
     );
+    const { sessionToken: otherSessionToken } = await createSession(otherUserId);
 
-    // 4. Fetch by other user -> 404 Not Found (Cross-tenant security)
+    // 4. Fetch by other user's session -> 404 Not Found (Cross-tenant security)
     const otherRes = await fetch(`${baseUrl}/api/emails/${emailId}`, {
-      headers: { 'x-user-id': otherUserId },
+      headers: { Cookie: `reachinbox_session=${otherSessionToken}` },
     });
     expect(otherRes.status).toBe(404);
+
+    // 5. Unauthenticated request -> 401 Unauthorized
+    const unauthRes = await fetch(`${baseUrl}/api/emails/${emailId}`);
+    expect(unauthRes.status).toBe(401);
   });
 });
