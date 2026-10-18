@@ -1,5 +1,5 @@
 import { Client } from '@elastic/elasticsearch';
-import { query } from '@reachinbox/db';
+import { query } from '@email-scheduler/db';
 
 export function getElasticsearchIndex(): string {
   return process.env.ELASTICSEARCH_INDEX || 'emails';

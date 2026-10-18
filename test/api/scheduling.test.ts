@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { Server } from 'http';
 import { createApp } from '../../apps/api/src/app.js';
-import { query, closePool } from '@reachinbox/db';
-import { getEmailQueue, closeQueue, closeRedis } from '@reachinbox/redis';
+import { query, closePool } from '@email-scheduler/db';
+import { getEmailQueue, closeQueue, closeRedis } from '@email-scheduler/redis';
 import { DEFAULT_DEV_SENDER_ID, DEFAULT_DEV_USER_ID, ensureDefaultDevUser } from '../../apps/api/src/middleware/auth.js';
 import { createSession } from '../../apps/api/src/modules/auth/session.js';
 
@@ -14,7 +14,7 @@ describe('Email Scheduling and Queue Producer (BE-01, BE-02, BE-03, BE-05, BE-07
   beforeAll(async () => {
     await ensureDefaultDevUser();
     const { sessionToken } = await createSession(DEFAULT_DEV_USER_ID);
-    sessionCookie = `reachinbox_session=${sessionToken}`;
+    sessionCookie = `email_scheduler_session=${sessionToken}`;
 
     const app = createApp();
     await new Promise<void>((resolve) => {
@@ -176,13 +176,13 @@ describe('Email Scheduling and Queue Producer (BE-01, BE-02, BE-03, BE-05, BE-07
       `INSERT INTO users (id, google_subject, email, name)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (id) DO NOTHING;`,
-      [otherUserId, 'other_google_sub', 'other@reachinbox.test', 'Other User'],
+      [otherUserId, 'other_google_sub', 'other@scheduler.local', 'Other User'],
     );
     const { sessionToken: otherSessionToken } = await createSession(otherUserId);
 
     // 4. Fetch by other user's session -> 404 Not Found (Cross-tenant security)
     const otherRes = await fetch(`${baseUrl}/api/emails/${emailId}`, {
-      headers: { Cookie: `reachinbox_session=${otherSessionToken}` },
+      headers: { Cookie: `email_scheduler_session=${otherSessionToken}` },
     });
     expect(otherRes.status).toBe(404);
 

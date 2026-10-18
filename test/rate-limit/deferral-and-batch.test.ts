@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'crypto';
-import { query, closePool } from '@reachinbox/db';
+import { query, closePool } from '@email-scheduler/db';
 import {
   getRedisClient,
   closeRedis,
@@ -8,7 +8,7 @@ import {
   resetSenderRateLimits,
   reserveRateLimitSlot,
   getNextUtcHourTimestamp,
-} from '@reachinbox/redis';
+} from '@email-scheduler/redis';
 import { scheduleEmails } from '../../apps/api/src/services/email.js';
 import { processEmailJob } from '../../apps/worker/src/processor.js';
 import {
@@ -35,7 +35,7 @@ describe('Distributed Rate Limiting: Deferral, Batch Ingestion & Ordering (RATE-
       [
         quotaSenderId,
         DEFAULT_DEV_USER_ID,
-        'quota-test@reachinbox.test',
+        'quota-test@scheduler.local',
         'Quota Test Sender',
         'ethereal_default',
         1000,

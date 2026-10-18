@@ -1,4 +1,4 @@
-# Caddy reverse proxy configuration for ReachInbox Email Scheduler
+# Caddy reverse proxy configuration for Email Job Scheduler
 # Automatically provisions and renews Let's Encrypt TLS certificates
 
 {

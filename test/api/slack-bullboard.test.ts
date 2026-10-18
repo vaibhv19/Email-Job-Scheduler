@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Server } from 'http';
 import { createApp } from '../../apps/api/src/app.js';
-import { query, closePool } from '@reachinbox/db';
-import { closeQueue, closeRedis, getRedisClient } from '@reachinbox/redis';
+import { query, closePool } from '@email-scheduler/db';
+import { closeQueue, closeRedis, getRedisClient } from '@email-scheduler/redis';
 import { createSession, SESSION_COOKIE_NAME } from '../../apps/api/src/modules/auth/session.js';
 import {
   signSlackState,
@@ -10,7 +10,7 @@ import {
   SLACK_STATE_COOKIE_NAME,
 } from '../../apps/api/src/modules/slack/slack.service.js';
 import { notifySlackQuotaExhausted } from '../../apps/worker/src/slack/notifier.js';
-import { encryptToken, decryptToken } from '@reachinbox/shared';
+import { encryptToken, decryptToken } from '@email-scheduler/shared';
 
 describe('Phase 9 — Slack OAuth, Rate-Limit Notifications, and Bull Board', () => {
   let server: Server;
@@ -63,7 +63,7 @@ describe('Phase 9 — Slack OAuth, Rate-Limit Notifications, and Bull Board', ()
     it('rejects unauthenticated requests to /admin/queues with 401 and WWW-Authenticate header', async () => {
       const res = await fetch(`${baseUrl}/admin/queues`);
       expect(res.status).toBe(401);
-      expect(res.headers.get('www-authenticate')).toContain('Basic realm="ReachInbox Bull Board"');
+      expect(res.headers.get('www-authenticate')).toContain('Basic realm="Bull Board"');
     });
 
     it('rejects invalid Basic Auth credentials with 401', async () => {
@@ -77,7 +77,7 @@ describe('Phase 9 — Slack OAuth, Rate-Limit Notifications, and Bull Board', ()
     });
 
     it('accepts valid administrator Basic Auth credentials and serves the dashboard', async () => {
-      const validCreds = Buffer.from('admin:reachinbox').toString('base64');
+      const validCreds = Buffer.from('admin:admin').toString('base64');
       const res = await fetch(`${baseUrl}/admin/queues`, {
         headers: {
           Authorization: `Basic ${validCreds}`,
@@ -184,13 +184,13 @@ describe('Phase 9 — Slack OAuth, Rate-Limit Notifications, and Bull Board', ()
               bot_user_id: 'B0123456789',
               team: {
                 id: 'T0987654321',
-                name: 'ReachInbox Test Workspace',
+                name: 'Test Workspace',
               },
               incoming_webhook: {
                 url: 'https://hooks.slack.com/services/T00/B00/secretwebhook',
                 channel: '#rate-limit-alerts',
                 channel_id: 'C11223344',
-                configuration_url: 'https://reachinbox.slack.com/services/B00',
+                configuration_url: 'https://slack.com/services/B00',
               },
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -232,7 +232,7 @@ describe('Phase 9 — Slack OAuth, Rate-Limit Notifications, and Bull Board', ()
         expect(dbRes.rows.length).toBe(1);
         const row = dbRes.rows[0];
         expect(row.team_id).toBe('T0987654321');
-        expect(row.team_name).toBe('ReachInbox Test Workspace');
+        expect(row.team_name).toBe('Test Workspace');
         expect(row.channel_name).toBe('#rate-limit-alerts');
 
         // Verify token is NOT plaintext in database (SLACK-05)
@@ -264,7 +264,7 @@ describe('Phase 9 — Slack OAuth, Rate-Limit Notifications, and Bull Board', ()
 
         expect(connData.data.connected).toBe(true);
         expect(connData.data.team_id).toBe('T0987654321');
-        expect(connData.data.team_name).toBe('ReachInbox Test Workspace');
+        expect(connData.data.team_name).toBe('Test Workspace');
         expect(connData.data.channel_name).toBe('#rate-limit-alerts');
         expect(connData.data.access_token).toBeUndefined();
         expect(connData.data.access_token_encrypted).toBeUndefined();
@@ -304,7 +304,7 @@ describe('Phase 9 — Slack OAuth, Rate-Limit Notifications, and Bull Board', ()
     it('gracefully skips notification when Slack is disconnected without failing (SLACK-09)', async () => {
       const result = await notifySlackQuotaExhausted({
         senderId: '11111111-2222-3333-4444-555555555555',
-        senderEmail: 'test-sender@reachinbox.test',
+        senderEmail: 'test-sender@scheduler.test',
         userId: testUserId,
         maxQuota: 50,
         currentCount: 50,
@@ -364,7 +364,7 @@ describe('Phase 9 — Slack OAuth, Rate-Limit Notifications, and Bull Board', ()
         // First alert: should successfully deliver (SLACK-07)
         const firstAlert = await notifySlackQuotaExhausted({
           senderId,
-          senderEmail: 'quota-exhausted@reachinbox.test',
+          senderEmail: 'quota-exhausted@scheduler.test',
           userId: testUserId,
           maxQuota: 100,
           currentCount: 100,
@@ -374,13 +374,13 @@ describe('Phase 9 — Slack OAuth, Rate-Limit Notifications, and Bull Board', ()
         expect(firstAlert.sent).toBe(true);
         expect(firstAlert.reason).toBe('success');
         expect(postedPayload).not.toBeNull();
-        expect(postedPayload.text).toContain('ReachInbox Rate Limit Alert');
-        expect(postedPayload.text).toContain('quota-exhausted@reachinbox.test');
+        expect(postedPayload.text).toContain('Rate Limit Alert');
+        expect(postedPayload.text).toContain('quota-exhausted@scheduler.test');
 
         // Second alert in same hour window: should be suppressed by Redis atomic deduplication (SLACK-08)
         const secondAlert = await notifySlackQuotaExhausted({
           senderId,
-          senderEmail: 'quota-exhausted@reachinbox.test',
+          senderEmail: 'quota-exhausted@scheduler.test',
           userId: testUserId,
           maxQuota: 100,
           currentCount: 100,
@@ -439,7 +439,7 @@ describe('Phase 9 — Slack OAuth, Rate-Limit Notifications, and Bull Board', ()
       try {
         const alertRes = await notifySlackQuotaExhausted({
           senderId,
-          senderEmail: 'failing-slack@reachinbox.test',
+          senderEmail: 'failing-slack@scheduler.test',
           userId: testUserId,
           maxQuota: 50,
           currentCount: 50,

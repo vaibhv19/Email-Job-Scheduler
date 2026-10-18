@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseRecipients, isValidEmail } from '@reachinbox/shared';
+import { parseRecipients, isValidEmail } from '@email-scheduler/shared';
 
 describe('Recipient CSV and Plaintext Parsing & Deduplication (QA-12)', () => {
   it('validates email addresses correctly', () => {

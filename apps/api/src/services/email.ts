@@ -1,7 +1,7 @@
 import crypto from 'crypto';
-import { withTransaction, query } from '@reachinbox/db';
-import { enqueueEmailJobsBatch, type EnqueueEmailJobParams } from '@reachinbox/redis';
-import { parseRecipients, type ScheduleEmailInput, RATE_LIMIT_DEFAULTS } from '@reachinbox/shared';
+import { withTransaction, query } from '@email-scheduler/db';
+import { enqueueEmailJobsBatch, type EnqueueEmailJobParams } from '@email-scheduler/redis';
+import { parseRecipients, type ScheduleEmailInput, RATE_LIMIT_DEFAULTS } from '@email-scheduler/shared';
 import { bulkIndexEmails } from './elasticsearch.js';
 
 export interface ScheduledEmailRecord {

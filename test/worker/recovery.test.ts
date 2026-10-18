@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { query, closePool } from '@reachinbox/db';
-import { closeRedis, closeQueue, enqueueEmailJob } from '@reachinbox/redis';
+import { query, closePool } from '@email-scheduler/db';
+import { closeRedis, closeQueue, enqueueEmailJob } from '@email-scheduler/redis';
 import {
   DEFAULT_DEV_USER_ID,
   DEFAULT_DEV_SENDER_ID,

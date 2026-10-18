@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
-import { query } from '@reachinbox/db';
-import { encryptToken, decryptToken } from '@reachinbox/shared';
+import { query } from '@email-scheduler/db';
+import { encryptToken, decryptToken } from '@email-scheduler/shared';
 
-export const SLACK_STATE_COOKIE_NAME = 'reachinbox_slack_state';
+export const SLACK_STATE_COOKIE_NAME = 'scheduler_slack_state';
 
 export interface SlackConnectionDto {
   connected: boolean;
@@ -14,7 +14,7 @@ export interface SlackConnectionDto {
 }
 
 function getHmacSecret(): string {
-  return process.env.SESSION_SECRET || 'reachinbox-slack-secret-hmac-key';
+  return process.env.SESSION_SECRET || 'email-scheduler-slack-hmac-key';
 }
 
 export function signSlackState(userId: string, nonce: string): string {

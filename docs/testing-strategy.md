@@ -1,21 +1,21 @@
-# ReachInbox Email Scheduler — Testing Strategy
+# Email Job Scheduler — Testing Strategy
 
-> **Document Purpose:** Define the testing principles, layered test architecture, requirement traceability, critical failure scenarios, execution environments, test-isolation safeguards, and evidence standards for the ReachInbox Full-stack Email Job Scheduler assignment.
+> **Document Purpose:** Define the testing principles, layered test architecture, requirement traceability, critical failure scenarios, execution environments, test-isolation safeguards, and evidence standards for the Full-Stack Email Job Scheduler.
 >
-> **Authority:** Subordinate to [`docs/requirements-checklist.md`](file:///d:/Work/Projects----Commercial/Outbox%20Labs/Assignment/docs/requirements-checklist.md) (authoritative requirements source of truth) and [`docs/architecture.md`](file:///d:/Work/Projects----Commercial/Outbox%20Labs/Assignment/docs/architecture.md) (authoritative architectural decisions).
+> **Authority:** Subordinate to [`docs/requirements-checklist.md`](file:///docs/requirements-checklist.md) (authoritative requirements source of truth) and [`docs/architecture.md`](file:///docs/architecture.md) (authoritative architectural decisions).
 
 ---
 
 ## 1. Testing Principles
 
 1. **Verify Actual Behavior:** Tests must assert real system outcomes (database state transitions, Redis job states, SMTP delivery receipts, rate-limit spacing) rather than mocking away core application logic.
-2. **Evidence-Based Verification:** A requirement in [`docs/requirements-checklist.md`](file:///d:/Work/Projects----Commercial/Outbox%20Labs/Assignment/docs/requirements-checklist.md) may be marked `Verified` only after a concrete test passes or a structured manual check produces documented evidence. Never mark `Verified` based on a plan, generated code, or an AI agent's unsupported assertion.
-3. **Automated vs. Manual Separation:** Automated unit, integration, and load tests must run headless via CLI commands. Manual verification is strictly reserved for live external OAuth handshakes, visual UI fidelity checks, and submission forms.
-4. **No Automated Browser Agents for UI:** In accordance with project instructions, all frontend visual-fidelity reviews against the supplied ReachInbox reference screens will be performed manually by the developer without launching automated browser agents.
+2. **Evidence-Based Verification:** A requirement in [`docs/requirements-checklist.md`](file:///docs/requirements-checklist.md) may be marked `Verified` only after a concrete test passes or a structured manual check produces documented evidence. Never mark `Verified` based on a plan, generated code, or an AI agent's unsupported assertion.
+3. **Automated vs. Manual Separation:** Automated unit, integration, and load tests must run headless via CLI commands. Manual verification is strictly reserved for live external OAuth handshakes and visual UI checks.
+4. **No Automated Browser Agents for UI:** In accordance with project instructions, all frontend visual and usability reviews will be performed manually by the developer without launching automated browser agents.
 5. **Zero Dependency on Production Secrets:** Automated CI/local test suites must never require live third-party production credentials. External integrations (Ethereal SMTP, Google OAuth, Slack API) must use test fixtures, sandbox credentials, or isolated test harnesses during automated testing. Mock OAuth callbacks in unit/API tests; verify real OAuth flows during development and production gates.
 6. **Strict Test Isolation:** Tests must never alter, flush, or truncate development or production data. Automated tests connect to dedicated test databases and reserved, disposable Redis targets. Teardown must rely on targeted key deletion rather than destructive database-wide cleanup like `FLUSHALL` or `FLUSHDB`.
 7. **Honest Reporting:** Tests must be reported as passing only when executed with exit code 0. Failures, race conditions, or unverified scenarios must be documented as `Blocked` or `In progress` rather than hidden.
-8. **Performance Targets as Goals:** Runtime performance targets (e.g., unit tests finishing in under 2 seconds) are ergonomic developer targets, not hard correctness requirements, unless specifically mandated by assignment SLAs.
+8. **Performance Targets as Goals:** Runtime performance targets (e.g., unit tests finishing in under 2 seconds) are ergonomic developer targets, not hard correctness requirements, unless specifically mandated by project SLAs.
 9. **Delivery Guarantees Integrity:** BullMQ processing provides at-least-once delivery; tests must never claim or assume impossible exactly-once SMTP delivery. Stable Message-IDs aid traceability but do not guarantee provider deduplication. PostgreSQL remains the authoritative source of truth.
 
 ---
@@ -27,7 +27,7 @@ The test suite is organized into five complementary tiers:
 ```text
 ┌────────────────────────────────────────────────────────┐
 │ Tier 5: Manual & Visual Verification                   │
-│ (Figma/Reference fidelity, real OAuth, ClickUp form)   │
+│ (UI theme fidelity, real OAuth, demo walkthrough)      │
 ├────────────────────────────────────────────────────────┤
 │ Tier 4: Concurrency & Stress Tests                     │
 │ (1,000+ batch, multi-worker race conditions, crash sim)│
@@ -60,7 +60,7 @@ The test suite is organized into five complementary tiers:
   - API pagination, sorting, and status filtering (`BE-14`).
 
 ### 2.3 Tier 3: Service & Worker Integration Tests
-- **Scope:** Real interactions with PostgreSQL (`reachinbox_test`), Redis/BullMQ (isolated database `REDIS_DB=15`), and Ethereal SMTP transport.
+- **Scope:** Real interactions with PostgreSQL (`email_scheduler_test`), Redis/BullMQ (isolated database `REDIS_DB=15`), and Ethereal SMTP transport.
 - **Components:**
   - Database persistence and constraint validation across simulated restarts (`QA-02`).
   - BullMQ delayed job enqueueing and deterministic job ID verification (`BE-05`, `BE-07`).
@@ -81,11 +81,11 @@ The test suite is organized into five complementary tiers:
 ### 2.5 Tier 5: Manual & End-to-End Verification
 - **Scope:** Live integrations requiring human inspection or developer credentials.
 - **Components:**
-  - Side-by-side visual fidelity audit against ReachInbox reference screens (`FE-26`, `QA-19`).
+  - Side-by-side visual and functional verification against design specifications (`FE-26`, `QA-19`).
   - Live Google OAuth flow with real Google account and session cookie verification (`QA-11`).
   - Live Slack OAuth and real rate-limit notification receipt in a connected workspace (`QA-10`).
   - Dual-provider callback URL verification in development and production environments (`QA-20`).
-  - ClickUp form completion and repository collaborator review checks (`SUB-01` to `SUB-25`).
+  - Walkthrough demo and repository configuration checks (`SUB-01` to `SUB-10`).
 
 ---
 
@@ -215,7 +215,7 @@ Every single requirement ID (195 total) from [`docs/requirements-checklist.md`](
 
 | ID | Requirement | Primary Testing Tier | Verification Method & Pass Evidence |
 |---|---|---|---|
-| `FE-01` | Reproduce ReachInbox-style visual theme and layout | Tier 5 (Manual UI) | Inspect layout structure, dark/light theme styling, typography, and iconography matching ReachInbox design |
+| `FE-01` | Implement responsive theme and layout | Tier 5 (Manual UI) | Inspect layout structure, dark/light theme styling, typography, and iconography matching design specifications |
 | `FE-02` | Implement clean login page | Tier 5 (Manual UI) | Navigate to `/login`; verify clean login screen with branded Google Sign-In button |
 | `FE-03` | Implement main dashboard navigation and shell | Tier 5 (Manual UI) | Log in; verify persistent sidebar/navigation, active route highlighting, and main content area |
 | `FE-04` | Implement Scheduled Emails view | Tier 5 (Manual UI) | Navigate to Scheduled tab; verify table/list of pending scheduled emails with appropriate column headers |
@@ -294,7 +294,7 @@ Every single requirement ID (195 total) from [`docs/requirements-checklist.md`](
 | `QA-16` | Verify monorepo build, lint, and test commands | Tier 1 (Static) | Run `npm run build && npm run lint && npm test`; verify all workspace packages pass without errors |
 | `QA-17` | Audit documentation against actual code capabilities | Tier 1 (Static) | Verify `README.md` and docs make no unsubstantiated claims and accurately record verified behavior and trade-offs |
 | `QA-18` | Verify SMTP post-acceptance crash scenario and recovery policy | Tier 4 (Recovery) | Simulate process crash after SMTP accepts message but before DB commit; verify recovery policy handles ambiguous outcome, mitigates duplicate risk, and documents at-least-once limitation |
-| `QA-19` | Manual UI visual-fidelity verification against supplied ReachInbox reference | Tier 5 (Manual E2E) | Developer manually inspects and verifies visual match against ReachInbox designs across login, scheduled list, sent list, opened-email view, and composer states (no agent browser automation) |
+| `QA-19` | Manual UI visual and functional verification | Tier 5 (Manual E2E) | Developer manually inspects and verifies visual match across login, scheduled list, sent list, opened-email view, and composer states (no agent browser automation) |
 | `QA-20` | End-to-end OAuth callback URL and environment verification | Tier 5 (Manual E2E) | Authenticate with real Google account and link real Slack workspace; verify live token exchanges, callback URL validity, and session persistence in dev and prod |
 
 ### 3.11 Deployment and Documentation (`DOC-01` to `DOC-16`)
@@ -312,7 +312,7 @@ Every single requirement ID (195 total) from [`docs/requirements-checklist.md`](
 | `DOC-09` | Explain restart recovery and reconciliation mechanisms | Tier 1 (Static) | Review documentation for clear description of startup reconciliation, outbox pattern, and BullMQ recovery |
 | `DOC-10` | Explain concurrency, delay, quota, and rescheduling behavior | Tier 1 (Static) | Review documentation for detailed explanation of Redis atomic scripts, locking order, and window semantics |
 | `DOC-11` | Explain idempotency guarantees and SMTP delivery limitations | Tier 1 (Static) | Verify documentation acknowledges the SMTP crash window and explains at-least-once delivery trade-offs |
-| `DOC-12` | Document all implemented features mapped to checklist | Tier 1 (Static) | Inspect feature list; verify direct mapping from features to assignment checklist IDs |
+| `DOC-12` | Document all implemented features mapped to checklist | Tier 1 (Static) | Inspect feature list; verify direct mapping from features to project checklist IDs |
 | `DOC-13` | Document assumptions, trade-offs, and design decisions | Tier 1 (Static) | Review architecture notes for explicit justifications of technical choices and acknowledged trade-offs |
 | `DOC-14` | Provide clean `.env.example` with all configuration keys | Tier 1 (Static) | Inspect `.env.example`; verify all required environment variables are listed with dummy values and documentation |
 | `DOC-15` | Deploy application to accessible cloud hosting environment | Tier 5 (Manual E2E) | Access deployed frontend and backend URLs on Oracle Cloud Always Free VM; verify hosted application is reachable and functional over HTTPS |
@@ -323,35 +323,18 @@ Every single requirement ID (195 total) from [`docs/requirements-checklist.md`](
 | `DOC-20` | Verify state persistence, scheduled-job recovery, and outbox reconciliation across container restarts and host VM reboot | Tier 4 (Recovery) | Schedule future email, reboot host VM (`sudo reboot`), verify full stack auto-recovers on boot and pending email delivery completes cleanly |
 | `DOC-21` | Verify outbound SMTP egress connectivity from Oracle Cloud VM | Tier 5 (Deployment) | Probe port 587/465 egress from VM (`nc -zv smtp.ethereal.email 587`); execute test send confirming OCI VCN security lists permit SMTP outbound |
 
-### 3.12 Submission Requirements (`SUB-01` to `SUB-25`)
+### 3.12 Demonstration and Verification (`SUB-01` to `SUB-10`)
 
 | ID | Requirement | Primary Testing Tier | Verification Method & Pass Evidence |
 |---|---|---|---|
-| `SUB-01` | Keep the GitHub repository private | Tier 5 (Manual) | Verify repository visibility is set to Private |
-| `SUB-02` | Invite reviewer `Mitrajit` as collaborator | Tier 5 (Manual) | Send repository invitation to GitHub user `Mitrajit` with collaborator permissions; verify invitation is active |
-| `SUB-03` | Invite reviewer `Yadav036` as collaborator | Tier 5 (Manual) | Send repository invitation to GitHub user `Yadav036` with collaborator permissions; verify invitation is active |
-| `SUB-04` | Push the latest source code and README to main branch | Tier 5 (Manual) | Verify remote `origin/main` has all committed source code, documentation, and lockfile |
-| `SUB-05` | Provide an active hosted assignment URL | Tier 5 (Manual) | Verify hosted application URL is live, accessible over HTTPS, and functional |
-| `SUB-06` | Record demo video no longer than 5 minutes | Tier 5 (Manual) | Check demo video file/link; verify recording duration is <= 5:00 minutes |
-| `SUB-07` | Demonstrate email scheduling workflow in demo video | Tier 5 (Manual) | Video demonstrates creating and scheduling single and batch emails |
-| `SUB-08` | Demonstrate Scheduled and Sent/Failed views in demo video | Tier 5 (Manual) | Video displays scheduled emails queue and sent emails history with status details |
-| `SUB-09` | Demonstrate restart recovery resilience in demo video | Tier 5 (Manual) | Video demonstrates scheduling a future email, restarting worker/API, and showing successful execution |
-| `SUB-10` | Demonstrate rate limiting and Slack alert in demo video | Tier 5 (Manual) | Video shows minimum delay spacing, quota deferral, and resulting Slack rate-limit alert |
-| `SUB-11` | Verify demo video public/reviewer permissions | Tier 5 (Manual) | Open demo link in incognito browser window; verify video plays without login/access request |
-| `SUB-12` | Prepare and enter full legal name | Tier 5 (Manual) | Verify applicant's full legal name is prepared and entered in submission form |
-| `SUB-13` | Prepare and enter contact details (phone number and email) | Tier 5 (Manual) | Verify applicant's phone number and primary email are prepared and entered in submission form |
-| `SUB-14` | Prepare and enter academic details (college, batch, CGPA, and attendance) | Tier 5 (Manual) | Verify college name, graduation batch year, CGPA, and attendance percentage are prepared and entered |
-| `SUB-15` | Prepare and enter professional links (LinkedIn profile and relevant links) | Tier 5 (Manual) | Verify LinkedIn profile URL and any portfolio/GitHub profile links are verified and entered |
-| `SUB-16` | Prepare and enter existing hosted project link | Tier 5 (Manual) | Verify prior hosted project link is live, tested, and entered in submission form |
-| `SUB-17` | Prepare and enter internship duration and joining availability | Tier 5 (Manual) | Verify preferred internship duration and immediate/exact joining availability date are entered |
-| `SUB-18` | Prepare and attach/link resume and cover letter | Tier 5 (Manual) | Verify updated resume and customized cover letter files/links are prepared and attached |
-| `SUB-19` | Enter accessible demo video URL | Tier 5 (Manual) | Verify demo video URL (<= 5 min) is verified and pasted into submission form |
-| `SUB-20` | Enter assignment GitHub repository URL | Tier 5 (Manual) | Verify private GitHub repository URL is entered into submission form |
-| `SUB-21` | Enter live hosted assignment URL | Tier 5 (Manual) | Verify accessible deployed assignment URL is entered into submission form |
-| `SUB-22` | Confirm reviewers (`Mitrajit` and `Yadav036`) have repository access | Tier 5 (Manual) | Verify form confirmation confirming collaborator invitations to `Mitrajit` and `Yadav036` |
-| `SUB-23` | Confirm source code and README are pushed | Tier 5 (Manual) | Verify form confirmation that code and comprehensive README are committed and pushed |
-| `SUB-24` | Truthfully affirm originality confirmation | Tier 5 (Manual) | Affirm originality declaration confirming the implementation was developed independently |
-| `SUB-25` | Complete and submit assignment ClickUp form | Tier 5 (Manual) | Submit completed form; verify confirmation screen/receipt that response has been recorded |
+| `SUB-01` | Secure repository settings | Tier 5 (Manual) | Verify repository configuration and access controls |
+| `SUB-04` | Push latest source code and README to main branch | Tier 5 (Manual) | Verify remote `origin/main` has all committed source code, documentation, and lockfile |
+| `SUB-05` | Cloud deployment readiness | Tier 5 (Manual) | Verify containerized application runs via Docker Compose behind reverse proxy |
+| `SUB-06` | Concise demonstration script | Tier 5 (Manual) | Structured demonstration walkthrough covering core flows in <= 5 minutes |
+| `SUB-07` | Demonstrate email scheduling workflow | Tier 5 (Manual) | Video demonstrates creating and scheduling single and batch emails |
+| `SUB-08` | Demonstrate Scheduled and Sent views | Tier 5 (Manual) | Video displays scheduled emails queue and sent emails history with status details |
+| `SUB-09` | Demonstrate restart recovery resilience | Tier 5 (Manual) | Video demonstrates scheduling a future email, restarting worker/API, and showing successful execution |
+| `SUB-10` | Demonstrate rate limiting and Slack alert | Tier 5 (Manual) | Video shows minimum delay spacing, quota deferral, and resulting Slack rate-limit alert |
 
 ---
 
@@ -443,7 +426,7 @@ The test suite must explicitly cover the following high-risk scenarios:
 > Automated test suites must NEVER execute `FLUSHALL`, `FLUSHDB`, or destructive database truncation against shared instances that might contain development or production data.
 
 1. **Redis Isolation and Cleanup Safeguards:**
-   - **Targeted Teardown Preferred:** Normal test teardown must use **targeted key deletion** of test-owned keys and namespaced data (e.g., deleting keys matching `{test}:*` or `reachinbox_test:*`) rather than database-wide cleanup. Never use `FLUSHALL`.
+   - **Targeted Teardown Preferred:** Normal test teardown must use **targeted key deletion** of test-owned keys and namespaced data (e.g., deleting keys matching `{test}:*` or `scheduler_test:*`) rather than database-wide cleanup. Never use `FLUSHALL`.
    - **No Routine FLUSHDB:** Do not use `FLUSHDB` as the normal test-cleanup mechanism.
    - **Queue Prefix Limitation:** A queue prefix alone (e.g., `{test}:emails`) namespaces keys within a database but does **not** protect against database-wide commands; running `FLUSHDB` wipes the entire database index regardless of prefix.
    - **Configuration Precedence & Effective Target Verification:** Because `REDIS_URL` takes precedence over individual parameters (`REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`), the test harness must **never infer the effective Redis database solely from `REDIS_DB`**. If destructive database-wide cleanup is genuinely necessary for an isolated suite reset, the test harness must first resolve the **effective connected Redis target** (parsing `REDIS_URL` or evaluating client connection options to verify the actual resolved host, port, and database index, e.g., verifying database index 15 on an isolated test instance) and confirm that the instance and database are dedicated and disposable for testing:
@@ -469,7 +452,7 @@ The test suite must explicitly cover the following high-risk scenarios:
    - *Current Repository Status (Planned vs. Implemented):* These runtime verification functions and dedicated Redis test infrastructure (`REDIS_DB=15` or a disposable test container) are **planned for implementation in Phase 2**. They are not yet implemented or active in the repository; no runtime validation has been executed yet.
 
 2. **PostgreSQL Isolation and Cleanup Safeguards:**
-   - **Effective Target Verification:** Automated tests must verify their **effective database target** before any destructive setup or teardown (such as schema migrations, test table truncation, or reset). Tests must connect to a dedicated test database (e.g., `reachinbox_test`), never the development database (`reachinbox_scheduler`) or a production database.
+   - **Effective Target Verification:** Automated tests must verify their **effective database target** before any destructive setup or teardown (such as schema migrations, test table truncation, or reset). Tests must connect to a dedicated test database (e.g., `email_scheduler_test`), never the development database (`email_scheduler`) or a production database.
    - **No Truncation of Dev/Prod Data:** Automated tests must never truncate, reset, or drop development or production data.
    - **Mandatory Target Assertion:** Test harnesses must parse the effective database connection string (accounting for `DATABASE_URL` taking precedence over `DB_NAME`) and assert that `process.env.NODE_ENV === 'test'` and the effective target database name explicitly ends with `_test`:
      ```typescript
@@ -486,7 +469,7 @@ The test suite must explicitly cover the following high-risk scenarios:
      }
      ```
    - **Transactional Rollbacks:** Individual integration tests should wrap operations in transactions and execute rollbacks (`BEGIN ... ROLLBACK`) wherever practical to avoid table truncation overhead and eliminate inter-test state leakage.
-   - *Current Repository Status (Planned vs. Implemented):* Dedicated test database provisioning (`reachinbox_test`), test migration harnesses, and runtime target verification checks are **planned for Phase 2**. They are not yet implemented or active.
+   - *Current Repository Status (Planned vs. Implemented):* Dedicated test database provisioning (`email_scheduler_test`), test migration harnesses, and runtime target verification checks are **planned for Phase 2**. They are not yet implemented or active.
 
 3. **Elasticsearch Isolation Safeguards:**
    - Indexing integration tests must target a dedicated test index (e.g., `emails_test`), asserting `process.env.NODE_ENV === 'test'` before creating or deleting test indices.
@@ -537,9 +520,9 @@ To mark any requirement in [`docs/requirements-checklist.md`](file:///d:/Work/Pr
 | **Worker / Queue** | Test output asserting BullMQ job lifecycle state transitions and database status updates. |
 | **Rate Limiter** | Timestamp delta log proving interval spacing `>= min_send_interval_ms`, and quota counter asserting cap is never exceeded. |
 | **Failure Recovery** | Test log demonstrating process crash simulation, subsequent restart, and conservative state reconciliation without duplicate send. |
-| **Manual UI Fidelity** | Documented manual check by the developer comparing implemented views side-by-side with ReachInbox reference screens (no automated browser agent). |
+| **Manual UI Fidelity** | Documented manual check by the developer comparing implemented views with design specifications (no automated browser agent). |
 | **Real OAuth Integration** | Documented manual verification of real browser consent flow, successful session cookie issuance, and authenticated profile retrieval in development and production environments. |
-| **Submission Items** | Verification of collaborator permissions on GitHub, accessible hosted link, valid <= 5 min video URL, and ClickUp confirmation receipt. |
+| **Operational Readiness** | Verification of secure repository settings, accessible hosted link, and valid <= 5 min walkthrough video. |
 
 ### Failure Reporting Rule:
 If a test fails or a scenario cannot be tested due to missing credentials or unmerged code, the requirement status must remain **`In progress`** or be marked **`Blocked`** with a clear explanation of the blocker. It must **never** be marked `Verified`.
@@ -633,7 +616,7 @@ If a test fails or a scenario cannot be tested due to missing credentials or unm
 ### 7.9 Backup Restoration Verification
 - **Objective:** Confirm database disaster recovery procedures work on the VM.
 - **Procedure:**
-  1. Execute a database backup: `docker compose exec postgres pg_dump -U postgres reachinbox_scheduler > backup_test.sql`.
+  1. Execute a database backup: `docker compose exec postgres pg_dump -U postgres email_scheduler > backup_test.sql`.
   2. Verify SQL backup file contains table definitions and data.
-  3. Verify restore procedure into a disposable temporary database: `createdb reachinbox_restore_test && psql -d reachinbox_restore_test < backup_test.sql`.
+  3. Verify restore procedure into a disposable temporary database: `createdb email_scheduler_restore_test && psql -d email_scheduler_restore_test < backup_test.sql`.
 - **Pass Criteria:** Backup and restore cycle completes cleanly with row count parity.

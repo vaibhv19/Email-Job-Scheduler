@@ -1,9 +1,9 @@
-import { getPool } from '@reachinbox/db';
+import { getPool } from '@email-scheduler/db';
 import {
   enqueueEmailJobsBatch,
   getEmailQueue,
   type EnqueueEmailJobParams,
-} from '@reachinbox/redis';
+} from '@email-scheduler/redis';
 
 export interface ReconciliationSummary {
   inspectedOutbox: number;
@@ -37,7 +37,7 @@ export async function runStartupReconciliation(
     // 1. Acquire coordination lock via PostgreSQL advisory lock
     for (let attempt = 0; attempt <= maxLockRetries; attempt++) {
       const lockRes = await client.query<{ locked: boolean }>(
-        "SELECT pg_try_advisory_lock(hashtext('reachinbox_reconciliation')) AS locked",
+        "SELECT pg_try_advisory_lock(hashtext('scheduler_reconciliation')) AS locked",
       );
 
       if (lockRes.rows[0].locked) {
@@ -304,7 +304,7 @@ export async function runStartupReconciliation(
   } finally {
     if (lockAcquired) {
       try {
-        await client.query("SELECT pg_advisory_unlock(hashtext('reachinbox_reconciliation'))");
+        await client.query("SELECT pg_advisory_unlock(hashtext('scheduler_reconciliation'))");
       } catch (unlockErr) {
         console.warn('[Reconciler] Failed to release advisory lock:', unlockErr);
       }

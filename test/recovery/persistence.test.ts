@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { query, closePool } from '@reachinbox/db';
-import { getRedisClient, closeRedis } from '@reachinbox/redis';
+import { query, closePool } from '@email-scheduler/db';
+import { getRedisClient, closeRedis } from '@email-scheduler/redis';
 
 describe('Database and Redis Persistence Across Reconnect (QA-02, INF-09)', () => {
   afterAll(async () => {
@@ -10,7 +10,7 @@ describe('Database and Redis Persistence Across Reconnect (QA-02, INF-09)', () =
 
   it('persists records and tables in PostgreSQL across client reconnections', async () => {
     // Insert a test user
-    const uniqueEmail = `test_persist_${Date.now()}@reachinbox.test`;
+    const uniqueEmail = `test_persist_${Date.now()}@scheduler.test`;
     const insertRes = await query<{ id: string }>(
       `INSERT INTO users (google_subject, email, name)
        VALUES ($1, $2, $3)
@@ -34,7 +34,7 @@ describe('Database and Redis Persistence Across Reconnect (QA-02, INF-09)', () =
 
   it('persists keys and values in Redis across client reconnections', async () => {
     const redis = getRedisClient();
-    const testKey = `reachinbox:test_persist:${Date.now()}`;
+    const testKey = `scheduler:test_persist:${Date.now()}`;
     await redis.set(testKey, 'active_value', 'EX', 60);
 
     const retrieved = await redis.get(testKey);

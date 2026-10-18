@@ -1,6 +1,6 @@
-import { query } from '@reachinbox/db';
-import { getRedisClient } from '@reachinbox/redis';
-import { decryptToken } from '@reachinbox/shared';
+import { query } from '@email-scheduler/db';
+import { getRedisClient } from '@email-scheduler/redis';
+import { decryptToken } from '@email-scheduler/shared';
 
 export interface QuotaAlertPayload {
   senderId: string;
@@ -76,7 +76,7 @@ export async function notifySlackQuotaExhausted(
     }
 
     const nextSendUtc = new Date(payload.nextEligibleTime).toUTCString();
-    const alertText = `⚠️ *ReachInbox Rate Limit Alert*: Sender \`${payload.senderEmail}\` has exhausted its hourly quota (${payload.currentCount}/${payload.maxQuota} emails). Remaining emails have been deferred to ${nextSendUtc}.`;
+    const alertText = `⚠️ *Rate Limit Alert*: Sender \`${payload.senderEmail}\` has exhausted its hourly quota (${payload.currentCount}/${payload.maxQuota} emails). Remaining emails have been deferred to ${nextSendUtc}.`;
 
     const messagePayload = {
       text: alertText,
@@ -85,7 +85,7 @@ export async function notifySlackQuotaExhausted(
           type: 'header',
           text: {
             type: 'plain_text',
-            text: '⚠️ ReachInbox Rate Limit Alert',
+            text: '⚠️ Rate Limit Alert',
             emoji: true,
           },
         },

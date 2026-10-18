@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for @reachinbox/api (ARM64 & x86_64 compatible)
+# Multi-stage Dockerfile for @email-scheduler/api (ARM64 & x86_64 compatible)
 FROM node:22-alpine AS builder
 
 WORKDIR /app
@@ -21,7 +21,7 @@ COPY apps/api ./apps/api
 
 # Build shared packages and API application
 RUN npm run build:packages
-RUN npm run build --workspace=@reachinbox/api
+RUN npm run build --workspace=@email-scheduler/api
 
 # Production Runner Stage
 FROM node:22-alpine AS runner

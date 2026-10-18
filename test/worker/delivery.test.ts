@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { query, closePool } from '@reachinbox/db';
+import { query, closePool } from '@email-scheduler/db';
 import {
   closeRedis,
   closeQueue,
   getRedisClient,
   resetSenderRateLimits,
-} from '@reachinbox/redis';
+} from '@email-scheduler/redis';
 import {
   DEFAULT_DEV_USER_ID,
   DEFAULT_DEV_SENDER_ID,
@@ -33,8 +33,8 @@ describe('Worker Engine: SMTP Delivery & Attempt Tracking (SMTP-01, SMTP-02, SMT
       [
         secondSenderId,
         DEFAULT_DEV_USER_ID,
-        'secondary@reachinbox.test',
-        'ReachInbox Secondary Sender',
+        'secondary@scheduler.local',
+        'Secondary Sender',
         'ethereal_secondary',
         1000,
         100,
@@ -91,7 +91,7 @@ describe('Worker Engine: SMTP Delivery & Attempt Tracking (SMTP-01, SMTP-02, SMT
 
     expect(result.status).toBe('sent');
     expect(result.emailId).toBe(testEmailId);
-    expect(result.messageId).toBe(`<${testEmailId}@reachinbox.test>`); // Stable Message-ID (SMTP-05)
+    expect(result.messageId).toBe(`<${testEmailId}@scheduler.local>`); // Stable Message-ID (SMTP-05)
 
     // Verify database record transitioned to 'sent' with provider details (SMTP-03, BE-11)
     const emailRes = await query<{
@@ -108,7 +108,7 @@ describe('Worker Engine: SMTP Delivery & Attempt Tracking (SMTP-01, SMTP-02, SMT
     const updatedEmail = emailRes.rows[0];
     expect(updatedEmail.status).toBe('sent');
     expect(updatedEmail.sent_at).not.toBeNull();
-    expect(updatedEmail.message_id).toBe(`<${testEmailId}@reachinbox.test>`);
+    expect(updatedEmail.message_id).toBe(`<${testEmailId}@scheduler.local>`);
     expect(updatedEmail.provider_message_id).toBeDefined();
 
     // Ethereal preview URL verified (SMTP-04)
@@ -212,7 +212,7 @@ describe('Worker Engine: SMTP Delivery & Attempt Tracking (SMTP-01, SMTP-02, SMT
     // Mock sendEmailViaSmtp to return permanent 550 error
     const spy = vi.spyOn(mailer, 'sendEmailViaSmtp').mockResolvedValueOnce({
       success: false,
-      messageId: `<${permanentFailEmailId}@reachinbox.test>`,
+      messageId: `<${permanentFailEmailId}@scheduler.local>`,
       isTransientError: false,
       errorCode: 'SMTP_550',
       errorMessage: '550 5.1.1 User unknown',
@@ -270,7 +270,7 @@ describe('Worker Engine: SMTP Delivery & Attempt Tracking (SMTP-01, SMTP-02, SMT
 
     const spy = vi.spyOn(mailer, 'sendEmailViaSmtp').mockResolvedValueOnce({
       success: false,
-      messageId: `<${transientEmailId}@reachinbox.test>`,
+      messageId: `<${transientEmailId}@scheduler.local>`,
       isTransientError: true,
       errorCode: 'SMTP_451',
       errorMessage: '451 4.3.0 Local error, please try later',

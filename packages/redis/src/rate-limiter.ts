@@ -60,9 +60,9 @@ export function getNextUtcHourTimestamp(date: Date = new Date()): number {
  * 1. Per-sender hourly quota (RATE-04, RATE-05, RATE-06)
  * 2. Per-sender minimum inter-send interval spacing (RATE-02, RATE-03)
  *
- * KEYS[1]: reachinbox:quota:{senderId}:{windowKey} (Set of emailIds that reserved quota in this window)
- * KEYS[2]: reachinbox:sender:{senderId}:last_send_time (String timestamp of last reserved send)
- * KEYS[3]: reachinbox:quota:{senderId}:{windowKey}:defer_counter (String counter for ordering deferred jobs)
+ * KEYS[1]: scheduler:quota:{senderId}:{windowKey} (Set of emailIds that reserved quota in this window)
+ * KEYS[2]: scheduler:sender:{senderId}:last_send_time (String timestamp of last reserved send)
+ * KEYS[3]: scheduler:quota:{senderId}:{windowKey}:defer_counter (String counter for ordering deferred jobs)
  *
  * ARGV[1]: emailId (string)
  * ARGV[2]: now (current epoch ms)
@@ -156,9 +156,9 @@ export async function reserveRateLimitSlot(
   const nextHourTimestamp = getNextUtcHourTimestamp(nowDate);
   const quotaTtlSeconds = 7200; // 2 hours retention for auto-cleanup
 
-  const quotaKey = `reachinbox:quota:${params.senderId}:${windowKey}`;
-  const lastSendKey = `reachinbox:sender:${params.senderId}:last_send_time`;
-  const deferCounterKey = `reachinbox:quota:${params.senderId}:${windowKey}:defer_counter`;
+  const quotaKey = `scheduler:quota:${params.senderId}:${windowKey}`;
+  const lastSendKey = `scheduler:sender:${params.senderId}:last_send_time`;
+  const deferCounterKey = `scheduler:quota:${params.senderId}:${windowKey}:defer_counter`;
 
   const result = (await client.eval(
     ATOMIC_RATE_LIMIT_SCRIPT,
@@ -225,7 +225,7 @@ export async function refundRateLimitQuota(
   params: { senderId: string; emailId: string; windowKey?: string },
 ): Promise<{ refunded: boolean; currentCount: number }> {
   const windowKey = params.windowKey ?? getUtcWindowKey();
-  const quotaKey = `reachinbox:quota:${params.senderId}:${windowKey}`;
+  const quotaKey = `scheduler:quota:${params.senderId}:${windowKey}`;
 
   const result = (await client.eval(
     ATOMIC_QUOTA_REFUND_SCRIPT,
@@ -248,8 +248,8 @@ export async function getSenderRateLimitState(
   params: { senderId: string; windowKey?: string },
 ): Promise<{ quotaCount: number; lastSendTime: number | null }> {
   const windowKey = params.windowKey ?? getUtcWindowKey();
-  const quotaKey = `reachinbox:quota:${params.senderId}:${windowKey}`;
-  const lastSendKey = `reachinbox:sender:${params.senderId}:last_send_time`;
+  const quotaKey = `scheduler:quota:${params.senderId}:${windowKey}`;
+  const lastSendKey = `scheduler:sender:${params.senderId}:last_send_time`;
 
   const [count, lastSend] = await Promise.all([
     client.scard(quotaKey),
@@ -271,9 +271,9 @@ export async function resetSenderRateLimits(
   windowKey?: string,
 ): Promise<void> {
   const window = windowKey ?? getUtcWindowKey();
-  const quotaKey = `reachinbox:quota:${senderId}:${window}`;
-  const lastSendKey = `reachinbox:sender:${senderId}:last_send_time`;
-  const deferCounterKey = `reachinbox:quota:${senderId}:${window}:defer_counter`;
+  const quotaKey = `scheduler:quota:${senderId}:${window}`;
+  const lastSendKey = `scheduler:sender:${senderId}:last_send_time`;
+  const deferCounterKey = `scheduler:quota:${senderId}:${window}:defer_counter`;
 
   await client.del(quotaKey, lastSendKey, deferCounterKey);
 }

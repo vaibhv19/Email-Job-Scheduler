@@ -1,9 +1,9 @@
 import crypto from 'crypto';
 import { OAuth2Client, CodeChallengeMethod } from 'google-auth-library';
-import { query } from '@reachinbox/db';
+import { query } from '@email-scheduler/db';
 import type { AuthenticatedUser } from '../../middleware/auth.js';
 
-export const OAUTH_STATE_COOKIE_NAME = 'reachinbox_oauth_state';
+export const OAUTH_STATE_COOKIE_NAME = 'scheduler_oauth_state';
 export const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 export interface GoogleProfile {

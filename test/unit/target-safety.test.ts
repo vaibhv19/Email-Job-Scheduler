@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { resolveDatabaseConfig } from '@reachinbox/db';
-import { resolveRedisOptions, verifyRedisTestIsolation } from '@reachinbox/redis';
+import { resolveDatabaseConfig } from '@email-scheduler/db';
+import { resolveRedisOptions, verifyRedisTestIsolation } from '@email-scheduler/redis';
 
 describe('Configuration Precedence and Test Target Safety (QA-16)', () => {
   it('DATABASE_URL takes precedence over individual DB_* parameters', () => {

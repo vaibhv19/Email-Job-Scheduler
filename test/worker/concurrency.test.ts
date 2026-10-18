@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { query, closePool, getPool } from '@reachinbox/db';
+import { query, closePool, getPool } from '@email-scheduler/db';
 import {
   closeRedis,
   closeQueue,
   createEmailWorker,
   getRedisClient,
   resetSenderRateLimits,
-} from '@reachinbox/redis';
+} from '@email-scheduler/redis';
 import { runStartupReconciliation } from '../../apps/worker/src/reconciler.js';
 import {
   DEFAULT_DEV_USER_ID,
@@ -141,7 +141,7 @@ describe('Worker Concurrency & Atomic Claiming (BE-12, QA-05, RATE-01)', () => {
     try {
       // Simulate another worker process currently holding the reconciliation advisory lock
       const lockRes = await client.query<{ locked: boolean }>(
-        "SELECT pg_try_advisory_lock(hashtext('reachinbox_reconciliation')) AS locked",
+        "SELECT pg_try_advisory_lock(hashtext('scheduler_reconciliation')) AS locked",
       );
       expect(lockRes.rows[0].locked).toBe(true);
       lockAcquired = true;
@@ -153,7 +153,7 @@ describe('Worker Concurrency & Atomic Claiming (BE-12, QA-05, RATE-01)', () => {
       expect(summary.recoveredStaleProcessing).toBe(0);
     } finally {
       if (lockAcquired) {
-        await client.query("SELECT pg_advisory_unlock(hashtext('reachinbox_reconciliation'))");
+        await client.query("SELECT pg_advisory_unlock(hashtext('scheduler_reconciliation'))");
       }
       client.release();
     }

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Server } from 'http';
 import { createApp } from '../../apps/api/src/app.js';
-import { query, closePool } from '@reachinbox/db';
-import { closeQueue, closeRedis } from '@reachinbox/redis';
+import { query, closePool } from '@email-scheduler/db';
+import { closeQueue, closeRedis } from '@email-scheduler/redis';
 import {
   createSession,
   invalidateSession,
@@ -143,7 +143,7 @@ describe('Real Google OAuth 2.0 & Session Security Architecture (Phase 6)', () =
     });
 
     it('rejects callback when state does not match the state cookie (anti-CSRF)', async () => {
-      const secret = process.env.SESSION_SECRET || 'reachinbox_default_session_secret_32_chars';
+      const secret = process.env.SESSION_SECRET || 'email_scheduler_default_session_secret_32_chars';
       const { state, codeVerifier } = generateOAuthParams();
       const signedCookie = signOAuthState({ state, codeVerifier, createdAt: Date.now() }, secret);
 
@@ -446,7 +446,7 @@ describe('Real Google OAuth 2.0 & Session Security Architecture (Phase 6)', () =
         .mockResolvedValueOnce(mockProfile);
 
       try {
-        const secret = process.env.SESSION_SECRET || 'reachinbox_default_session_secret_32_chars';
+        const secret = process.env.SESSION_SECRET || 'email_scheduler_default_session_secret_32_chars';
         const { state, codeVerifier } = generateOAuthParams();
         const signedCookie = signOAuthState({ state, codeVerifier, createdAt: Date.now() }, secret);
 
@@ -468,7 +468,7 @@ describe('Real Google OAuth 2.0 & Session Security Architecture (Phase 6)', () =
         expect(setCookie).toContain('HttpOnly');
 
         // Extract session token from Set-Cookie header
-        const match = setCookie?.match(/reachinbox_session=([^;]+)/);
+        const match = setCookie?.match(new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`));
         expect(match).not.toBeNull();
         const sessionToken = match![1];
 

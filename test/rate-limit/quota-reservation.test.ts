@@ -8,7 +8,7 @@ import {
   resetSenderRateLimits,
   getUtcWindowKey,
   getNextUtcHourTimestamp,
-} from '@reachinbox/redis';
+} from '@email-scheduler/redis';
 
 describe('Distributed Rate Limiting: Hourly Quota Reservations (RATE-04, RATE-05, RATE-12)', () => {
   const testSenderId = crypto.randomUUID();

@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { Server } from 'http';
 import { createApp } from '../../apps/api/src/app.js';
-import { closePool } from '@reachinbox/db';
-import { closeRedis, closeQueue } from '@reachinbox/redis';
+import { closePool } from '@email-scheduler/db';
+import { closeRedis, closeQueue } from '@email-scheduler/redis';
 import { DEFAULT_DEV_SENDER_ID, DEFAULT_DEV_USER_ID, ensureDefaultDevUser } from '../../apps/api/src/middleware/auth.js';
-import { createSession } from '../../apps/api/src/modules/auth/session.js';
+import { createSession, SESSION_COOKIE_NAME } from '../../apps/api/src/modules/auth/session.js';
 
 describe('API Request Validation and Error Envelope (QA-01, BE-04, BE-16, BE-17)', () => {
   let server: Server;
@@ -14,7 +14,7 @@ describe('API Request Validation and Error Envelope (QA-01, BE-04, BE-16, BE-17)
   beforeAll(async () => {
     await ensureDefaultDevUser();
     const { sessionToken } = await createSession(DEFAULT_DEV_USER_ID);
-    sessionCookie = `reachinbox_session=${sessionToken}`;
+    sessionCookie = `${SESSION_COOKIE_NAME}=${sessionToken}`;
 
     const app = createApp();
     await new Promise<void>((resolve) => {

@@ -3,7 +3,7 @@ export * from './recipients.js';
 export * from './crypto.js';
 
 /**
- * ReachInbox Shared Constants and Types
+ * Shared Constants and Types
  */
 
 export const EMAIL_STATUS = {

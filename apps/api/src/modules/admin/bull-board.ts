@@ -1,7 +1,7 @@
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
-import { getEmailQueue } from '@reachinbox/redis';
+import { getEmailQueue } from '@email-scheduler/redis';
 import type { Request, Response, NextFunction, Router } from 'express';
 
 /**
@@ -11,14 +11,14 @@ export function createBullBoardAuthMiddleware() {
   return (req: Request, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Basic ')) {
-      res.setHeader('WWW-Authenticate', 'Basic realm="ReachInbox Bull Board"');
+      res.setHeader('WWW-Authenticate', 'Basic realm="Bull Board"');
       return res.status(401).send('Authentication required');
     }
 
     const credentials = Buffer.from(authHeader.substring(6), 'base64').toString('utf8');
     const colonIndex = credentials.indexOf(':');
     if (colonIndex === -1) {
-      res.setHeader('WWW-Authenticate', 'Basic realm="ReachInbox Bull Board"');
+      res.setHeader('WWW-Authenticate', 'Basic realm="Bull Board"');
       return res.status(401).send('Authentication required');
     }
 
@@ -26,10 +26,10 @@ export function createBullBoardAuthMiddleware() {
     const password = credentials.substring(colonIndex + 1);
 
     const expectedUser = process.env.BULL_BOARD_USERNAME || 'admin';
-    const expectedPass = process.env.BULL_BOARD_PASSWORD || 'reachinbox';
+    const expectedPass = process.env.BULL_BOARD_PASSWORD || 'admin';
 
     if (username !== expectedUser || password !== expectedPass) {
-      res.setHeader('WWW-Authenticate', 'Basic realm="ReachInbox Bull Board"');
+      res.setHeader('WWW-Authenticate', 'Basic realm="Bull Board"');
       return res.status(401).send('Invalid credentials');
     }
 

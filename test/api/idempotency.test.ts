@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { Server } from 'http';
 import { createApp } from '../../apps/api/src/app.js';
-import { query, closePool } from '@reachinbox/db';
-import { closeQueue, closeRedis } from '@reachinbox/redis';
+import { query, closePool } from '@email-scheduler/db';
+import { closeQueue, closeRedis } from '@email-scheduler/redis';
 import { DEFAULT_DEV_SENDER_ID, DEFAULT_DEV_USER_ID, ensureDefaultDevUser } from '../../apps/api/src/middleware/auth.js';
 import { createSession } from '../../apps/api/src/modules/auth/session.js';
 
@@ -14,7 +14,7 @@ describe('API Idempotency and Conflict Detection (BE-08, QA-04)', () => {
   beforeAll(async () => {
     await ensureDefaultDevUser();
     const { sessionToken } = await createSession(DEFAULT_DEV_USER_ID);
-    sessionCookie = `reachinbox_session=${sessionToken}`;
+    sessionCookie = `email_scheduler_session=${sessionToken}`;
 
     const app = createApp();
     await new Promise<void>((resolve) => {

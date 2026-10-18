@@ -1,5 +1,5 @@
-import { withTransaction } from '@reachinbox/db';
-import { enqueueEmailJobsBatch, type EnqueueEmailJobParams } from '@reachinbox/redis';
+import { withTransaction } from '@email-scheduler/db';
+import { enqueueEmailJobsBatch, type EnqueueEmailJobParams } from '@email-scheduler/redis';
 
 export interface OutboxRecord {
   id: string;

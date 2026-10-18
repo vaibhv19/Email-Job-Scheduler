@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
-import { query } from '@reachinbox/db';
+import { query } from '@email-scheduler/db';
 
 export function computePayloadHash(req: Request): string {
   const normalizedPayload = req.body ? JSON.stringify(req.body) : '';

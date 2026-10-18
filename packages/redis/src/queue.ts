@@ -8,7 +8,7 @@ let globalEmailQueue: Queue | null = null;
 
 export function getEmailQueue(): Queue {
   if (!globalEmailQueue) {
-    const prefix = process.env.BULLMQ_PREFIX || 'reachinbox';
+    const prefix = process.env.BULLMQ_PREFIX || 'emailscheduler';
     globalEmailQueue = new Queue(EMAIL_QUEUE_NAME, {
       connection: getRedisClient(),
       prefix,
@@ -130,7 +130,7 @@ export interface CreateWorkerOptions {
  * Creates and initializes a BullMQ Worker instance for email job execution (BE-11, RATE-01)
  */
 export function createEmailWorker(processor: Processor, options?: CreateWorkerOptions): Worker {
-  const prefix = process.env.BULLMQ_PREFIX || 'reachinbox';
+  const prefix = process.env.BULLMQ_PREFIX || 'emailscheduler';
   const connection = createDedicatedRedisClient();
 
   return new Worker(EMAIL_QUEUE_NAME, processor, {

@@ -1,5 +1,5 @@
 {
-  "name": "@reachinbox/worker",
+  "name": "@email-scheduler/worker",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -11,9 +11,9 @@
     "dev": "tsc && node dist/index.js"
   },
   "dependencies": {
-    "@reachinbox/db": "*",
-    "@reachinbox/redis": "*",
-    "@reachinbox/shared": "*",
+    "@email-scheduler/db": "*",
+    "@email-scheduler/redis": "*",
+    "@email-scheduler/shared": "*",
     "dotenv": "^16.4.7",
     "nodemailer": "^10.1.0"
   },

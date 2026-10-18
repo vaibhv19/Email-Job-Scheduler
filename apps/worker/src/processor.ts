@@ -1,4 +1,4 @@
-import { query, withTransaction } from '@reachinbox/db';
+import { query, withTransaction } from '@email-scheduler/db';
 import {
   type Job,
   DEFAULT_JOB_ATTEMPTS,
@@ -6,8 +6,8 @@ import {
   reserveRateLimitSlot,
   refundRateLimitQuota,
   DelayedError,
-} from '@reachinbox/redis';
-import { RATE_LIMIT_DEFAULTS } from '@reachinbox/shared';
+} from '@email-scheduler/redis';
+import { RATE_LIMIT_DEFAULTS } from '@email-scheduler/shared';
 import * as mailer from './mailer.js';
 import { notifySlackQuotaExhausted } from './slack/notifier.js';
 

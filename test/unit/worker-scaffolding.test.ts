@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RATE_LIMIT_DEFAULTS } from '@reachinbox/shared';
+import { RATE_LIMIT_DEFAULTS } from '@email-scheduler/shared';
 
 describe('Worker Scaffolding and Concurrency Config (INF-11, RATE-01)', () => {
   it('exports default worker concurrency and rate limits', () => {

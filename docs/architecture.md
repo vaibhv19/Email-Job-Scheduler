@@ -1,8 +1,8 @@
-# ReachInbox Email Scheduler — Architecture
+# Email Job Scheduler — Architecture
 
 ## 1. Purpose
 
-Define the architecture, component responsibilities, data flow, persistence guarantees, rate-limiting strategy, and failure-handling behavior for the ReachInbox Full-stack Email Job Scheduler assignment.
+Define the architecture, component responsibilities, data flow, persistence guarantees, rate-limiting strategy, and failure-handling behavior for the Email Job Scheduler.
 
 This document is subordinate to `docs/requirements-checklist.md`. Every implementation decision must satisfy the requirements checklist.
 
@@ -426,7 +426,7 @@ Organize the frontend by feature:
 - Shared API client and TypeScript response types.
 - Shared loading, empty, error, toast, and form components.
 
-The frontend must match the supplied ReachInbox reference while retaining every assignment-required control. The compose form must submit actual scheduling parameters to the backend.
+The frontend provides a clean, responsive interface retaining every required scheduling and monitoring control. The compose form must submit actual scheduling parameters to the backend.
 
 Do not rely on client-side authorization or treat client-provided rate limits as trusted configuration.
 
@@ -491,7 +491,7 @@ For 1,000 or more emails scheduled at a similar time:
 - Keep search indexing asynchronous.
 - Record the batch size and conditions used in load tests.
 
-Do not claim unlimited throughput or production-scale guarantees from a small assignment load test.
+Do not claim unlimited throughput or production-scale guarantees from a single-node load test.
 
 ## 18. Architectural Decision Rules
 
@@ -517,17 +517,17 @@ Do not claim unlimited throughput or production-scale guarantees from a small as
   - **Architecture Dependency:** If an Ampere A1 (ARM64) instance is selected, all container images (Node.js base images for API/worker/frontend, PostgreSQL, Redis, Elasticsearch) and native dependencies must support `linux/arm64`. Multi-arch or ARM64-compatible Docker base images (`node:20-alpine` or `node:20-bookworm-slim`, official `postgres:16-alpine`, `redis:7-alpine`, and official `elasticsearch:8.x`) must be verified at deployment time.
   - **Deployment-Time Fact Verification:** Target shape, actual CPU architecture, available memory, disk quota, region availability, and Always Free capacity availability are strictly deployment-time facts to verify during Phase 10. Do not treat instance availability as a static guarantee.
 - **Availability & SLA Assumption:**
-  - This architecture represents an educational/internship assignment demonstration environment hosted on a single constrained virtual machine.
-  - It is **not** a fault-tolerant, multi-AZ, or highly available production cluster.
-  - Single-host failure, cloud hypervisor maintenance, host reboots, or Oracle Cloud free-tier capacity reclamation will result in service downtime. Uninterrupted uptime is explicitly disclaimed.
+  - This architecture represents a containerized single-host deployment topology suitable for cloud VM hosting.
+  - It is **not** a fault-tolerant, multi-AZ, or highly available distributed cluster.
+  - Single-host failure, cloud hypervisor maintenance, host reboots, or cloud provider capacity reclamation will result in service downtime. Uninterrupted uptime is explicitly disclaimed.
 
 ### 19.2 Container Orchestration & Private Network Boundary
 The containerized runtime topology on the target VM consists of:
 1. **Reverse Proxy (Nginx / Caddy):** Exposes ports `80` (HTTP redirect) and `443` (HTTPS). Manages TLS certificate provisioning (e.g., Let's Encrypt / Certbot) and proxies traffic to the internal frontend and API containers.
-2. **React Web Frontend (Vite / Static Web Server):** Serves the compiled ReachInbox client bundle over the internal Docker network.
+2. **React Web Frontend (Vite / Static Web Server):** Serves the compiled client SPA bundle over the internal Docker network.
 3. **Express API Server:** Listens on internal port `3001` (or internal network), reachable only through the reverse proxy.
 4. **BullMQ Background Worker:** Runs as a dedicated background process on the internal Docker network, connecting to PostgreSQL and Redis. No external ports exposed.
-5. **PostgreSQL 16:** Runs on the internal Docker network (`reachinbox-network`).
+5. **PostgreSQL 16:** Runs on the internal Docker network (`scheduler_network`).
 6. **Redis 7:** Runs on the internal Docker network with AOF persistence enabled.
 7. **Elasticsearch 8:** Runs on the internal Docker network for indexing and search queries.
 
@@ -604,7 +604,7 @@ The containerized runtime topology on the target VM consists of:
 ### 19.5 Networking, HTTPS, and Outbound SMTP Verification
 - **HTTPS & OAuth Callbacks:**
   - Google OAuth 2.0 and Slack OAuth strictly require HTTPS callback URLs for non-localhost endpoints.
-  - The reverse proxy must provide valid TLS certificates matching the registered domain (e.g., `https://reachinbox.<domain>/api/auth/google/callback`).
+  - The reverse proxy must provide valid TLS certificates matching the registered domain (e.g., `https://scheduler.<domain>/api/auth/google/callback`).
   - Session cookies must enforce `COOKIE_SECURE=true` and `SameSite=lax`.
 - **Server-Side Secret Isolation:**
   - All credentials (`SESSION_SECRET`, `TOKEN_ENCRYPTION_KEY`, `GOOGLE_CLIENT_SECRET`, `SLACK_CLIENT_SECRET`, database passwords) must reside exclusively in a server-side `.env` file on the VM with restricted file permissions (`chmod 600 .env`).

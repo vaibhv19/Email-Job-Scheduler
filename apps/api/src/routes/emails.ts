@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
-import { query } from '@reachinbox/db';
-import { scheduleEmailSchema } from '@reachinbox/shared';
+import { query } from '@email-scheduler/db';
+import { scheduleEmailSchema } from '@email-scheduler/shared';
 import { requireUser } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { handleIdempotency } from '../middleware/idempotency.js';

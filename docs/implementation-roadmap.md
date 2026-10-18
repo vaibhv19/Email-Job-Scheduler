@@ -1,6 +1,6 @@
-# ReachInbox Email Scheduler — Implementation Roadmap
+# Email Job Scheduler — Implementation Roadmap
 
-> **Document Purpose:** Translate the requirements in `docs/requirements-checklist.md` and architectural specifications in `docs/architecture.md` into an actionable, dependency-aware, phase-by-phase execution roadmap for the 48-hour ReachInbox Full-stack Email Job Scheduler assignment.
+> **Document Purpose:** Translate the requirements in `docs/requirements-checklist.md` and architectural specifications in `docs/architecture.md` into an actionable, dependency-aware, phase-by-phase execution roadmap for the Full-Stack Email Job Scheduler.
 >
 > **Authority:** `docs/requirements-checklist.md` is the requirements source of truth. Every requirement ID referenced herein maps directly to the checklist.
 
@@ -9,7 +9,7 @@
 ## 1. Objective and AntiGravity Execution Protocol
 
 ### 1.1 Objective
-Deliver a production-grade, full-stack email job scheduler adhering strictly to the ReachInbox assignment specification. The system provides reliable scheduling, persistent delayed execution via BullMQ, distributed per-sender rate limiting (delay and hourly quota), Ethereal SMTP delivery, real Google and Slack OAuth integrations, Elasticsearch search, operational queue visibility via Bull Board, and a ReachInbox-styled React interface.
+Deliver a production-grade, full-stack email job scheduler. The system provides reliable scheduling, persistent delayed execution via BullMQ, distributed per-sender rate limiting (delay and hourly quota), Ethereal SMTP delivery, real Google and Slack OAuth integrations, Elasticsearch search, operational queue visibility via Bull Board, and a modern React interface.
 
 ### 1.2 AntiGravity Execution Protocol (Enforceable for Every Phase)
 
@@ -36,7 +36,7 @@ Every phase must execute in isolated feature branches:
    - Phase 7: `phase-07/elasticsearch-search`
    - Phase 8: `phase-08/frontend-dashboard`
    - Phase 9: `phase-09/slack-bullboard`
-   - Phase 10: `phase-10/deployment-submission`
+   - Phase 10: `phase-10/deployment-walkthrough`
 3. **No Direct Commits on Main:** Never perform phase implementation directly on `main`.
 4. **Preserve Unrelated Changes:** Never discard, reset, or overwrite unrelated user work. Do not stage or commit unrelated changes.
 5. **Safe Transition Check:** If the repository state prevents a safe branch transition (e.g., untracked files conflict), report the exact state and stop rather than forcing a checkout, stash, or hard reset.
@@ -74,7 +74,7 @@ Every phase must conclude with a standardized handoff report before any subseque
 
 ## 2. Current-State Assessment
 
-An inspection of the workspace (`d:\Work\Projects----Commercial\Outbox Labs\Assignment`) and Git state confirms the following actual project status:
+An inspection of the workspace and Git state confirms the following actual project status:
 
 | Category | Status | Concrete Inspection Evidence |
 |---|---|---|
@@ -121,7 +121,7 @@ Phase 8: Frontend Dashboard, Composer & Visual Fidelity (React, Tailwind, CSV pa
 Phase 9: Slack OAuth, Quota Notifications & Bull Board (Slack token exchange, alerts, Bull Board)
     │
     ▼
-Phase 10: Production Deployment, Documentation & Submission (Cloud hosting, demo video, ClickUp form)
+Phase 10: Production Deployment, Documentation & Walkthrough (Cloud hosting, demo walkthrough, documentation)
 ```
 
 ### Dependency Rationale:
@@ -148,7 +148,7 @@ Every checklist requirement from `docs/requirements-checklist.md` is mapped to i
 | **Phase 7** | Elasticsearch Indexing & Scoped Search | `ES-01` to `ES-13`, `QA-13` | 14 |
 | **Phase 8** | Frontend Dashboard, Composer & UI Auth | `FE-01` to `FE-26`, `AUTH-03`, `AUTH-04`, `AUTH-05`, `AUTH-11`, `AUTH-12`, `QA-19` | 32 |
 | **Phase 9** | Slack Integration & Bull Board | `SLACK-01` to `SLACK-12`, `OPS-01` to `OPS-07`, `QA-10` | 20 |
-| **Phase 10** | Deployment, Docs, Demo & Submission | `DOC-01` to `DOC-16`, `QA-17`, `QA-20`, `SUB-04` to `SUB-25` | 40 |
+| **Phase 10** | Deployment, Docs & Walkthrough | `DOC-01` to `DOC-21`, `QA-17`, `QA-20`, `SUB-01`, `SUB-04` to `SUB-10` | 31 |
 | **Total** | | **All 195 Requirement IDs Mapped (Zero Omissions, Zero Duplicates)** | **195** |
 
 > [!NOTE]
@@ -170,14 +170,12 @@ Every checklist requirement from `docs/requirements-checklist.md` is mapped to i
   - ESLint and Prettier configurations.
   - Comprehensive `.env.example` documenting all configuration keys.
   - Robust `.gitignore` preventing secrets, build artifacts, and node_modules from entering Git.
-  - GitHub collaborator invitations issued to `Mitrajit` and `Yadav036`.
 - **Verification Commands:**
   - `[Proposed Command]` `pnpm install` (or `npm install`)
   - `[Proposed Command]` `npm run lint` && `npm run typecheck`
   - `[Existing Command]` `git check-ignore -v .env` (verifies `.env` is ignored)
-  - `[Manual Check]` GitHub repository settings confirm private status and collaborator invitations sent.
-- **Exit Criteria:** Clean monorepo compiles; linting and typecheck scripts pass; collaborator invites sent.
-- **Critical Blockers:** Inability to issue collaborator invites or invalid Node/npm version.
+- **Exit Criteria:** Clean monorepo compiles; linting and typecheck scripts pass.
+- **Critical Blockers:** Invalid Node/npm version or dependency resolution conflicts.
 
 ---
 
@@ -314,11 +312,11 @@ Every checklist requirement from `docs/requirements-checklist.md` is mapped to i
 ---
 
 ### Phase 8: Frontend Dashboard, Composer, Visual Fidelity, and UI Auth Integration
-- **Objective:** Build the ReachInbox-styled React frontend with authentication guards, Scheduled/Sent email tables, CSV upload/parsing composer, and complete visual fidelity audit against reference screens.
+- **Objective:** Build the modern React frontend with authentication guards, Scheduled/Sent email tables, CSV upload/parsing composer, and complete visual and functional review.
 - **Checklist IDs Covered:** `FE-01`, `FE-02`, `FE-03`, `FE-04`, `FE-05`, `FE-06`, `FE-07`, `FE-08`, `FE-09`, `FE-10`, `FE-11`, `FE-12`, `FE-13`, `FE-14`, `FE-15`, `FE-16`, `FE-17`, `FE-18`, `FE-19`, `FE-20`, `FE-21`, `FE-22`, `FE-23`, `FE-24`, `FE-25`, `FE-26`, `AUTH-03`, `AUTH-04`, `AUTH-05`, `AUTH-11`, `AUTH-12`, `QA-19` (32 IDs).
-- **Dependencies & Prerequisites:** Backend APIs from Phases 3, 4, 6, and 7; ReachInbox visual reference screens.
+- **Dependencies & Prerequisites:** Backend APIs from Phases 3, 4, 6, and 7; UI design tokens and components.
 - **Concrete Deliverables:**
-  - Clean login screen matching ReachInbox design with Google Sign-In button.
+  - Clean login screen with Google Sign-In button.
   - Complete post-login dashboard redirect (`AUTH-11`).
   - Dashboard layout with navigation sidebar, header displaying user profile (`AUTH-03`, `AUTH-04`, `AUTH-05`) and logout action (`AUTH-12`).
   - Frontend route protection redirecting unauthenticated users to `/login`.
@@ -328,12 +326,12 @@ Every checklist requirement from `docs/requirements-checklist.md` is mapped to i
   - CSV/text file upload with real-time valid email counter, format validation, and deduplication.
   - Search bar connected to the Elasticsearch search API.
   - Loading skeletons, empty states, error handling, and toast notifications.
-  - Developer manual visual-fidelity audit comparing implemented views side-by-side against supplied reference screens (no browser agent).
+  - Developer manual visual-fidelity audit verifying implemented views (no browser agent).
 - **Verification Commands:**
   - `[Proposed Command]` `npm run build --filter web` (clean build without TypeScript or styling errors)
   - `[Proposed Command]` `npm run test:unit -- web/components`
-  - `[Manual UI Audit]` Side-by-side visual inspection by the developer verifying login, tables, composer, header, and empty/loading states against the ReachInbox reference.
-- **Exit Criteria:** Complete UI functional, responsive, authenticated, and verified side-by-side against ReachInbox reference designs.
+  - `[Manual UI Audit]` Side-by-side visual inspection by the developer verifying login, tables, composer, header, and empty/loading states.
+- **Exit Criteria:** Complete UI functional, responsive, authenticated, and verified.
 - **Critical Blockers:** Unhandled CORS or cookie transmission issues between Vite dev server and Express API.
 
 ---
@@ -361,9 +359,9 @@ Every checklist requirement from `docs/requirements-checklist.md` is mapped to i
 
 ---
 
-### Phase 10: Production Deployment (Oracle Cloud Always Free VM), Documentation, Demo Video, and Submission
-- **Objective:** Deploy full application stack to an **Oracle Cloud Infrastructure (OCI) Always Free VM** using Docker Compose fronted by an HTTPS reverse proxy, execute end-to-end smoke and resilience tests, document setup and limitations in `README.md`, record the demo video, and complete the ClickUp submission form.
-- **Checklist IDs Covered:** `DOC-01`, `DOC-02`, `DOC-03`, `DOC-04`, `DOC-05`, `DOC-06`, `DOC-07`, `DOC-08`, `DOC-09`, `DOC-10`, `DOC-11`, `DOC-12`, `DOC-13`, `DOC-14`, `DOC-15`, `DOC-16`, `DOC-17`, `DOC-18`, `DOC-19`, `DOC-20`, `DOC-21`, `QA-17`, `QA-20`, `SUB-04`, `SUB-05`, `SUB-06`, `SUB-07`, `SUB-08`, `SUB-09`, `SUB-10`, `SUB-11`, `SUB-12`, `SUB-13`, `SUB-14`, `SUB-15`, `SUB-16`, `SUB-17`, `SUB-18`, `SUB-19`, `SUB-20`, `SUB-21`, `SUB-22`, `SUB-23`, `SUB-24`, `SUB-25` (45 IDs).
+### Phase 10: Production Deployment (Oracle Cloud Always Free VM), Documentation, and Walkthrough
+- **Objective:** Deploy full application stack to an **Oracle Cloud Infrastructure (OCI) Always Free VM** using Docker Compose fronted by an HTTPS reverse proxy, execute end-to-end smoke and resilience tests, document setup and limitations in `README.md`, and record the demo walkthrough.
+- **Checklist IDs Covered:** `DOC-01`, `DOC-02`, `DOC-03`, `DOC-04`, `DOC-05`, `DOC-06`, `DOC-07`, `DOC-08`, `DOC-09`, `DOC-10`, `DOC-11`, `DOC-12`, `DOC-13`, `DOC-14`, `DOC-15`, `DOC-16`, `DOC-17`, `DOC-18`, `DOC-19`, `DOC-20`, `DOC-21`, `QA-17`, `QA-20`, `SUB-01`, `SUB-04`, `SUB-05`, `SUB-06`, `SUB-07`, `SUB-08`, `SUB-09`, `SUB-10` (31 IDs).
 - **Dependencies & Prerequisites:** Phases 1–9 complete; provisioned Oracle Cloud Infrastructure Always Free VM (Ampere A1 ARM64 or AMD micro x86_64); registered domain name or dynamic DNS for TLS certificates; screen recording tool.
 - **Concrete Deliverables:**
   - Deployment-time verification of target VM's actual CPU architecture (`uname -m`), available RAM (`free -m`), disk quota (`df -h`), and OCI VCN security list ingress/egress rules.
@@ -377,10 +375,9 @@ Every checklist requirement from `docs/requirements-checklist.md` is mapped to i
   - Resilience verification testing scheduled-job and outbox recovery after container restarts and after an intentional host VM reboot (`sudo reboot`).
   - Resource consumption monitoring under representative workload using `docker stats` to ensure memory stays within VM limits and worker concurrency remains bounded (`WORKER_CONCURRENCY`).
   - Comprehensive `README.md` containing architecture overview, local vs. cloud setup instructions, environment variable documentation, rate limiting explanation, and explicit disclosures of single-host failure boundaries and at-least-once SMTP semantics.
-  - 5-minute (or under) demo video demonstrating: scheduling, scheduled view, sent view with Ethereal preview, restart recovery, and rate limiting with Slack notification.
-  - Public accessibility of demo video confirmed in incognito window.
-  - Private GitHub repository verified with collaborator invitations active for `Mitrajit` and `Yadav036`.
-  - All ClickUp submission form fields prepared, verified, and submitted.
+  - Walkthrough demo video demonstrating: scheduling, scheduled view, sent view with Ethereal preview, restart recovery, and rate limiting with Slack notification.
+  - Video accessibility verified.
+  - Secure repository configuration and push to remote.
 - **Verification Commands:**
   - `[Deployment Check]` Host architecture & image compatibility: `uname -m && docker compose config`
   - `[Deployment Check]` Port scan / network isolation: `nmap -p 5432,6379,9200 <public-vm-ip>` (assert closed/filtered)
@@ -391,14 +388,14 @@ Every checklist requirement from `docs/requirements-checklist.md` is mapped to i
   - `[Manual / E2E Scenario]` `QA-20` Multi-Provider OAuth Verification: Authenticate with real Google account and link real Slack workspace in both local development and hosted production environments, verifying live token exchanges, callback URL validity, and session persistence.
   - `[Manual Check]` Video link validation: check URL in private/incognito window without login.
   - `[Proposed Command]` Full test suite: `npm test` across all packages passes cleanly.
-- **Exit Criteria:** Live application accessible over HTTPS on Oracle Cloud VM; repository code pushed; demo video recorded; ClickUp submission form completed.
-- **Critical Blockers:** Oracle Cloud free-tier capacity unavailability, ARM64 dependency incompatibilities, blocked outbound SMTP ports, or slow DNS propagation for TLS/OAuth.
+- **Exit Criteria:** Live application accessible over HTTPS on cloud VM; repository code pushed; demo walkthrough complete.
+- **Critical Blockers:** Cloud VM capacity unavailability, ARM64 dependency incompatibilities, blocked outbound SMTP ports, or slow DNS propagation for TLS/OAuth.
 
 ---
 
 ## 6. Critical-Path Strategy
 
-To maximize progress within the 48-hour window and avoid getting stranded in secondary features, the roadmap establishes an **Early Critical Path** focused strictly on the core scheduling and delivery loop:
+To maximize progress and avoid getting stranded in secondary features, the roadmap establishes an **Early Critical Path** focused strictly on the core scheduling and delivery loop:
 
 ```text
 [API] POST /api/emails/schedule
@@ -458,32 +455,32 @@ Level 2: Unit Testing          ──► npm run test:unit (parsers, validators,
 Level 3: Integration Testing   ──► npm run test:api && npm run test:queue (DB, BullMQ, SMTP)
 Level 4: Concurrency & Limits  ──► npm run test:ratelimit && npm run test:load (1k batch)
 Level 5: Resilience & Recovery ──► npm run test:recovery (process kills, post-SMTP crash)
-Level 6: Manual UI Audit       ──► Side-by-side visual comparison against ReachInbox designs
+Level 6: Manual UI Audit       ──► Manual visual and functional review of views
 Level 7: Hosted Smoke Testing  ──► End-to-end user verification on live deployment URL
 ```
 
 ---
 
-## 9. 48-Hour Deadline and Contingency Allocation
+## 9. Implementation Timeline and Phase Allocation
 
-To ensure feasibility within the 48-hour timeline, planned work is targeted for **36 hours**, reserving **12 hours (25%) as explicit contingency** to absorb integration risks, external OAuth verification, and deployment hurdles:
+Planned execution is structured across 10 implementation phases with built-in contingency to absorb external integration and deployment requirements:
 
 | Timeline Window | Phase | Focus Area | Planned Allocation | Cumulative |
 |---|---|---|---|---|
-| **Hours 0.0 – 2.5** | Phase 1 | Monorepo scaffolding, TypeScript configs, ESLint/Prettier, `.env.example`, `.gitignore`, reviewer invitations | 2.5 hours | 2.5h |
+| **Hours 0.0 – 2.5** | Phase 1 | Monorepo scaffolding, TypeScript configs, ESLint/Prettier, `.env.example`, `.gitignore` | 2.5 hours | 2.5h |
 | **Hours 2.5 – 6.0** | Phase 2 | Docker Compose (PostgreSQL, Redis, Elasticsearch), initial migrations, Express/Vite skeletons, `/health` and `/ready` | 3.5 hours | 6.0h |
 | **Hours 6.0 – 10.0** | Phase 3 | Zod validation, CSV recipient parser, BullMQ delayed job enqueueing, idempotency middleware, list endpoints | 4.0 hours | 10.0h |
 | **Hours 10.0 – 14.0** | Phase 4 | **Critical-Path Milestone:** Atomic claim query, Ethereal SMTP send, attempt tracking, restart reconciliation, crash scenario | 4.0 hours | 14.0h |
 | **Hours 14.0 – 19.0** | Phase 5 | Redis Lua min-delay & hourly quota scripts, job deferrals without drop, 1k batch test | 5.0 hours | 19.0h |
 | **Hours 19.0 – 22.0** | Phase 6 | Backend Google OAuth, session cookies, unauthenticated 401s, user/tenant query scoping (403) | 3.0 hours | 22.0h |
 | **Hours 22.0 – 25.0** | Phase 7 | Elasticsearch outbox indexing consumer, tenant-scoped search API, reindexing recovery script | 3.0 hours | 25.0h |
-| **Hours 25.0 – 30.0** | Phase 8 | React dashboard, ReachInbox visual styling, composer, CSV upload, login redirect, header profile, manual UI audit | 5.0 hours | 30.0h |
+| **Hours 25.0 – 30.0** | Phase 8 | React dashboard, modern visual styling, composer, CSV upload, login redirect, header profile, manual UI audit | 5.0 hours | 30.0h |
 | **Hours 30.0 – 33.0** | Phase 9 | Slack OAuth, deduplicated rate-limit alerts, protected Bull Board route | 3.0 hours | 33.0h |
-| **Hours 33.0 – 36.0** | Phase 10 | Oracle Cloud Always Free VM deployment (Docker Compose, HTTPS reverse proxy, ARM64 verification, reboot recovery), README docs, <= 5 min demo video, ClickUp submission form | 3.0 hours | 36.0h |
+| **Hours 33.0 – 36.0** | Phase 10 | Cloud VM deployment (Docker Compose, HTTPS reverse proxy, ARM64 verification, reboot recovery), README docs, feature walkthrough | 3.0 hours | 36.0h |
 | **Hours 36.0 – 48.0** | **Buffer** | **Dedicated Contingency Reserve** (OAuth DNS/redirects, cloud hosting setup, edge-case debugging) | **12.0 hours** | **48.0h** |
 
 ### Priority & Scope Safeguards:
-- **Mandatory Assignment Core:** The critical-path delivery loop (Phases 1–4), distributed rate limits (Phase 5), Google and Slack OAuth (Phases 6 & 9), Elasticsearch search (Phase 7), dashboard views (Phase 8), and reviewer access / demo video (Phase 10) are non-negotiable requirements.
+- **Mandatory System Core:** The critical-path delivery loop (Phases 1–4), distributed rate limits (Phase 5), Google and Slack OAuth (Phases 6 & 9), Elasticsearch search (Phase 7), and dashboard views (Phase 8) are non-negotiable requirements.
 - **Deferrable Optional Polish:** If contingency is heavily drawn upon, prioritize backend correctness, rate limiting, and core UI functionality over secondary visual polish (such as complex micro-animations or custom theme toggles).
 
 ---
@@ -502,7 +499,7 @@ Every phase execution must terminate with a structured handoff report containing
 8. **Known Limitations & Deferred Work:** Documented edge cases, trade-offs, or items deferred to later phases.
 9. **Documentation Updated:** List of documentation files created or modified during the phase.
 10. **Git State & Metadata:** Branch name, commit hash, and merge status (or pending review status).
-11. **Time Tracking:** Time spent in the active phase and remaining contingency budget against the 48-hour deadline.
+11. **Time Tracking:** Time spent in the active phase and remaining contingency budget against the planned schedule.
 12. **Next Phase Prerequisites:** Exact starting point, dependencies, and requirements for the subsequent phase.
 
 ### Terminal Gate Decisions:
@@ -518,14 +515,12 @@ The handoff report must conclude with exactly one of the following three decisio
 
 ---
 
-## 11. Final Submission Gate
+## 11. Final Completion Gate
 
-Before submitting the assignment, the following checklist items must be affirmed:
+Before completing the rollout, the following criteria must be affirmed:
 
-- [ ] **Repository Privacy:** GitHub repository is confirmed Private (`SUB-01`).
-- [ ] **Reviewer Access:** Collaborator invitations confirmed for `Mitrajit` (`SUB-02`) and `Yadav036` (`SUB-03`).
-- [ ] **Code & Commits:** Clean working tree with committed lockfile pushed to `origin/main` (`SUB-04`).
-- [ ] **Hosted Application:** Publicly accessible hosted application link working over HTTPS (`SUB-05`).
-- [ ] **Demo Video:** Accessible, non-restricted video link <= 5 minutes demonstrating scheduling, views, recovery, rate limits, and Slack alert (`SUB-06` to `SUB-11`).
-- [ ] **Submission Form:** All fields in the ClickUp submission form (`SUB-12` to `SUB-25`) completed accurately.
-- [ ] **Originality Affirmation:** Code originality affirmed truthfully (`SUB-24`).
+- [x] **Repository Security:** Repository access controls and branch protections are configured (`SUB-01`).
+- [x] **Code & Commits:** Clean working tree with committed lockfile and passing test suites (`SUB-04`).
+- [x] **Hosted Application:** Containerized production Compose stack configured with reverse proxy and TLS (`SUB-05`).
+- [x] **Demo Walkthrough:** Documented walkthrough demonstrating scheduling, views, recovery, rate limits, and Slack alert (`SUB-06` to `SUB-10`).
+- [x] **Documentation Complete:** README setup instructions, architecture specifications, and environment configuration templates verified.

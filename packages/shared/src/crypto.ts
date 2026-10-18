@@ -8,7 +8,7 @@ function deriveEncryptionKey(secret?: string): Buffer {
     secret ||
     process.env.TOKEN_ENCRYPTION_KEY ||
     process.env.SESSION_SECRET ||
-    'reachinbox-default-token-encryption-key-32chars!!';
+    'email-scheduler-dev-encryption-key-32chars!!';
   return crypto.createHash('sha256').update(secretKey).digest();
 }
 

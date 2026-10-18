@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for @reachinbox/web (ARM64 & x86_64 compatible)
+# Multi-stage Dockerfile for @email-scheduler/web (ARM64 & x86_64 compatible)
 FROM node:22-alpine AS builder
 
 WORKDIR /app
@@ -17,7 +17,7 @@ COPY apps/web ./apps/web
 
 # Build shared package and frontend application
 RUN npm run build:packages
-RUN npm run build --workspace=@reachinbox/web
+RUN npm run build --workspace=@email-scheduler/web
 
 # Production Web Server Stage (Nginx Alpine)
 FROM nginx:alpine AS runner

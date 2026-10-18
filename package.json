@@ -1,8 +1,8 @@
 {
-  "name": "reachinbox-email-scheduler",
+  "name": "email-job-scheduler",
   "version": "1.0.0",
   "private": true,
-  "description": "ReachInbox Full-Stack Email Job Scheduler with BullMQ, Redis, PostgreSQL, and Elasticsearch",
+  "description": "Full-Stack Distributed Email Job Scheduler with BullMQ, Redis, PostgreSQL, and Elasticsearch",
   "type": "module",
   "workspaces": [
     "apps/*",
@@ -10,9 +10,9 @@
   ],
   "scripts": {
     "build": "npm run build:packages && npm run build:apps",
-    "build:packages": "npm run build --workspace=@reachinbox/shared && npm run build --workspace=@reachinbox/db && npm run build --workspace=@reachinbox/redis",
-    "build:apps": "npm run build --workspace=@reachinbox/api && npm run build --workspace=@reachinbox/worker && npm run build --workspace=@reachinbox/web",
-    "typecheck": "tsc --build --verbose && npm run typecheck --workspace=@reachinbox/web",
+    "build:packages": "npm run build --workspace=@email-scheduler/shared && npm run build --workspace=@email-scheduler/db && npm run build --workspace=@email-scheduler/redis",
+    "build:apps": "npm run build --workspace=@email-scheduler/api && npm run build --workspace=@email-scheduler/worker && npm run build --workspace=@email-scheduler/web",
+    "typecheck": "tsc --build --verbose && npm run typecheck --workspace=@email-scheduler/web",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -25,7 +25,7 @@
     "test:ratelimit": "vitest run --dir test/ratelimit",
     "test:recovery": "vitest run --dir test/recovery",
     "test:load": "vitest run --dir test/load",
-    "db:migrate": "npm run build --workspace=@reachinbox/db && node packages/db/dist/migrate.js",
+    "db:migrate": "npm run build --workspace=@email-scheduler/db && node packages/db/dist/migrate.js",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "infra:ps": "docker compose -f infra/docker-compose.yml ps"

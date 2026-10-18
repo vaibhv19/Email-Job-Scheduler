@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { Server } from 'http';
 import { createApp } from '../../apps/api/src/app.js';
-import { query, closePool } from '@reachinbox/db';
-import { closeQueue, closeRedis } from '@reachinbox/redis';
+import { query, closePool } from '@email-scheduler/db';
+import { closeQueue, closeRedis } from '@email-scheduler/redis';
 import {
   ensureElasticsearchIndex,
   getElasticsearchClient,
@@ -23,7 +23,7 @@ describe('Real Elasticsearch Indexing, User-Scoped Search & Recovery (Phase 7)',
   beforeAll(async () => {
     await ensureDefaultDevUser();
     const { sessionToken } = await createSession(DEFAULT_DEV_USER_ID);
-    sessionCookie = `reachinbox_session=${sessionToken}`;
+    sessionCookie = `email_scheduler_session=${sessionToken}`;
 
     const app = createApp();
     await new Promise<void>((resolve) => {
@@ -60,7 +60,7 @@ describe('Real Elasticsearch Indexing, User-Scoped Search & Recovery (Phase 7)',
       id: `00000000-0000-4000-9000-${Date.now().toString().slice(-12)}`,
       user_id: DEFAULT_DEV_USER_ID,
       sender_id: DEFAULT_DEV_SENDER_ID,
-      sender_email: 'sender@reachinbox.test',
+      sender_email: 'sender@scheduler.local',
       recipient_email: `recipient_${uniqueToken}@example.com`,
       subject: `Quarterly Strategy Briefing ${uniqueToken}`,
       body: `Confidential financial performance report with token ${uniqueToken}`,
@@ -129,7 +129,7 @@ describe('Real Elasticsearch Indexing, User-Scoped Search & Recovery (Phase 7)',
     const apiRes = await fetch(
       `${baseUrl}/api/emails/search?q=${encodeURIComponent(userASecret)}`,
       {
-        headers: { Cookie: `reachinbox_session=${sessionTokenB}` },
+        headers: { Cookie: `email_scheduler_session=${sessionTokenB}` },
       },
     );
     expect(apiRes.status).toBe(200);

@@ -1,16 +1,16 @@
-# ReachInbox Full-Stack Email Job Scheduler
+# Full-Stack Email Job Scheduler
 
-A production-grade, distributed email job scheduling system built for the ReachInbox Software Development Intern assignment. The platform provides persistent delayed email dispatch via BullMQ, atomic per-sender rate limiting (inter-send delay spacing and sliding hourly quota), Ethereal SMTP delivery with test message previews, dual-provider OAuth integrations (Google Sign-In and Slack rate-limit alerts), full-text search via Elasticsearch, operational queue monitoring via Bull Board, and a ReachInbox-styled React dashboard.
+A production-grade, distributed email job scheduling system. The platform provides persistent delayed email dispatch via BullMQ, atomic per-sender rate limiting (inter-send delay spacing and sliding hourly quota), Ethereal SMTP delivery with test message previews, dual-provider OAuth integrations (Google Sign-In and Slack rate-limit alerts), full-text search via Elasticsearch, operational queue monitoring via Bull Board, and a modern React dashboard.
 
 ---
 
 ## 1. Project Documentation Index
 
-- **[Requirements Checklist](file:///docs/requirements-checklist.md):** Authoritative requirements source of truth tracing all assignment criteria and verification evidence.
+- **[Requirements & Feature Checklist](file:///docs/requirements-checklist.md):** Authoritative requirements source of truth tracing all technical capabilities and verification evidence.
 - **[Architecture Specification](file:///docs/architecture.md):** Architectural decisions, state machines, Redis Lua scripts, failure recovery, and target OCI deployment topology.
 - **[Implementation Roadmap](file:///docs/implementation-roadmap.md):** 10-phase execution plan, branch workflow, and handoff protocols.
 - **[Testing Strategy](file:///docs/testing-strategy.md):** Multi-tiered test pyramid, test isolation safeguards, and deployment checks.
-- **[5-Minute Demo Script](file:///docs/demo-script.md):** Step-by-step evaluator video recording guide designed to complete in under 5 minutes.
+- **[Feature Demo Walkthrough](file:///docs/demo-script.md):** Step-by-step feature walkthrough and demonstration guide.
 
 ---
 
@@ -36,7 +36,7 @@ flowchart TD
 
 | Component | Technology | Role & Key Responsibilities |
 |---|---|---|
-| **Frontend** | React 19, TypeScript, Vite, Tailwind CSS | ReachInbox-themed dark slate UI, Scheduled Outbox & Sent tables, Compose modal with CSV upload, Elasticsearch search bar, live Slack connection pill |
+| **Frontend** | React 19, TypeScript, Vite, Tailwind CSS | Modern dark slate UI, Scheduled Outbox & Sent tables, Compose modal with CSV upload, Elasticsearch search bar, live Slack connection pill |
 | **Backend API** | Node.js 22, Express, TypeScript | Zod validation, Google OAuth 2.0 (PKCE + HMAC state), session management, outbox reconciliation, Slack OAuth, search API, Bull Board mount |
 | **Worker Service** | Node.js 22, BullMQ, TypeScript | Multi-worker concurrency, atomic DB claims (`SELECT ... FOR UPDATE`), Redis Lua rate-limit reservations, SMTP delivery, crash recovery |
 | **Relational Database** | PostgreSQL 16 (Alpine) | Primary authoritative state: `users`, `user_sessions`, `senders`, `emails`, `email_attempts`, `slack_connections`, `scheduling_outbox` |
@@ -65,12 +65,12 @@ cp .env.example .env
 
 Inspect `.env`. For local development, default values connect to local Docker containers:
 - `PORT=3001`
-- `DATABASE_URL=postgresql://postgres:postgres@localhost:5433/reachinbox_scheduler` (or port 5432)
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:5433/email_scheduler` (or port 5432)
 - `REDIS_URL=redis://localhost:6380` (or port 6379)
 - `ELASTICSEARCH_NODE=http://localhost:9200`
 - `WORKER_CONCURRENCY=5`
-- `SESSION_SECRET=reachinbox-secure-random-session-secret-32chars`
-- `TOKEN_ENCRYPTION_KEY=reachinbox-default-token-encryption-key-32chars!!`
+- `SESSION_SECRET=your-random-session-secret-at-least-32chars`
+- `TOKEN_ENCRYPTION_KEY=your-random-encryption-key-32chars!!`
 
 > [!WARNING]
 > **No Secrets in Frontend:** Never place backend database passwords, session secrets, or client secrets in `apps/web/.env` or prefix them with `VITE_`. Variables prefixed with `VITE_` are bundled directly into public client-side JavaScript.
@@ -154,7 +154,7 @@ The application links user workspaces via real Slack OAuth 2.0, stores encrypted
    SLACK_CLIENT_SECRET=your_slack_client_secret
    SLACK_CALLBACK_URL=http://localhost:3001/api/slack/callback
    ```
-5. In the ReachInbox dashboard header, click **"Connect Slack"** to link your workspace.
+5. In the dashboard header, click **"Connect Slack"** to link your workspace.
 6. When an email sender exhausts its hourly quota, a structured rate-limit alert block is automatically delivered to the connected Slack workspace. Repeated retries within the same hour window are deduplicated in Redis (`slack_alert:{senderId}:{utcHour}`) to prevent spam.
 
 ### 4.3 Ethereal SMTP Test Email Previews (SMTP-01..SMTP-04)
@@ -235,7 +235,7 @@ The application includes turnkey Docker configurations for single-host productio
 
 ### 7.1 Architecture & Network Isolation
 - **Reverse Proxy (Caddy):** Only ports `80` (HTTP) and `443` (HTTPS) are published to the public internet. Caddy automatically provisions Let's Encrypt TLS certificates.
-- **Internal Network Isolation:** PostgreSQL (`5432`), Redis (`6379`), Elasticsearch (`9200`), the API (`3001`), and Web SPA (`80`) communicate strictly over an internal Docker bridge network (`reachinbox_prod_network`) and **do not expose open ports to the public host IP**.
+- **Internal Network Isolation:** PostgreSQL (`5432`), Redis (`6379`), Elasticsearch (`9200`), the API (`3001`), and Web SPA (`80`) communicate strictly over an internal Docker bridge network (`scheduler_network`) and **do not expose open ports to the public host IP**.
 - **ARM64 Compatibility:** All base images (`node:22-alpine`, `postgres:16-alpine`, `redis:7-alpine`, `elasticsearch:8.11.3`, `caddy:2-alpine`, `nginx:alpine`) are multi-arch images natively compatible with Oracle Ampere A1 (ARM64) architecture.
 
 ### 7.2 Deployment Steps
@@ -245,8 +245,8 @@ The application includes turnkey Docker configurations for single-host productio
    ```
 2. Clone repository and configure `.env`:
    ```bash
-   git clone <private-repo-url> reachinbox
-   cd reachinbox
+   git clone <repo-url> email-job-scheduler
+   cd email-job-scheduler
    cp .env.example .env
    ```
 3. Configure production values in `.env`:
@@ -274,9 +274,9 @@ The application includes turnkey Docker configurations for single-host productio
 
 ---
 
-## 8. Five-Minute Demo Video Script
+## 8. Feature Walkthrough & Verification Guide
 
-A concise evaluation demo script is available at **[docs/demo-script.md](file:///docs/demo-script.md)**:
+A concise feature walkthrough guide is available at **[docs/demo-script.md](file:///docs/demo-script.md)**:
 - **0:00 – 0:45:** Google OAuth 2.0 Sign-in, user avatar pill, and session verification.
 - **0:45 – 2:00:** Bulk email scheduling via CSV upload, recipient validation, delay and quota settings.
 - **2:00 – 2:50:** Worker job execution, status state machine transitions, and Ethereal preview inspection.
@@ -286,7 +286,7 @@ A concise evaluation demo script is available at **[docs/demo-script.md](file://
 
 ---
 
-## 9. Status of Assignment Requirements
+## 9. Feature & Architecture Verification Status
 
 | Area | Status | Verification Summary |
 |---|---|---|
@@ -296,9 +296,9 @@ A concise evaluation demo script is available at **[docs/demo-script.md](file://
 | **4. Rate Limiting & Concurrency** | **Verified** | Per-sender spacing (`min_send_interval_ms`), atomic Redis hourly quotas, BullMQ deferral |
 | **5. Slack OAuth & Alerts** | **Verified** | Real Slack OAuth authorization-code flow, encrypted tokens at rest, atomic Redis alert deduplication |
 | **6. Google Authentication** | **Verified** | Real Google OAuth 2.0 with PKCE and HMAC state cookies, user profile header, tenant isolation |
-| **7. Frontend Dashboard** | **Verified** | ReachInbox-themed React SPA, Scheduled Outbox & Sent tables, Compose modal, CSV parser |
+| **7. Frontend Dashboard** | **Verified** | Modern React SPA, Scheduled Outbox & Sent tables, Compose modal, CSV parser |
 | **8. Elasticsearch Search** | **Verified** | Full-text indexing on creation, post-delivery status updates, user-scoped filter queries |
 | **9. Bull Board Monitoring** | **Verified** | Bull Board mounted at `/admin/queues` protected with HTTP Basic Auth |
 | **10. Testing & QA** | **Verified** | Comprehensive test suite passing with 0 errors across 20 test files |
 | **11. Deployment Preparation** | **Ready** | Multi-stage Dockerfiles, `docker-compose.prod.yml`, Caddy reverse proxy, OCI documentation |
-| **12. Submission & Live Credentials** | **Awaiting Manual Step** | Requires user-provided Google & Slack client credentials for manual browser sign-in and live recording |
+| **12. Production Configuration** | **Environment-Driven** | Configurable via standard environment variables for Google OAuth, Slack, and SMTP services |

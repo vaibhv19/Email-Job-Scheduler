@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { Server } from 'http';
 import { createApp } from '../../apps/api/src/app.js';
-import { closePool } from '@reachinbox/db';
-import { closeRedis } from '@reachinbox/redis';
+import { closePool } from '@email-scheduler/db';
+import { closeRedis } from '@email-scheduler/redis';
 
 describe('API Health and Readiness Endpoints (INF-03, INF-12)', () => {
   let server: Server;

@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
-import { checkDatabaseHealth } from '@reachinbox/db';
-import { checkRedisHealth } from '@reachinbox/redis';
+import { checkDatabaseHealth } from '@email-scheduler/db';
+import { checkRedisHealth } from '@email-scheduler/redis';
 
 export const healthRouter = Router();
 

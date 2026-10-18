@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { query } from '@reachinbox/db';
+import { query } from '@email-scheduler/db';
 import {
   validateSession,
   createSession,
@@ -41,7 +41,7 @@ export async function ensureDefaultDevUser(): Promise<void> {
       [
         DEFAULT_DEV_USER_ID,
         'dev_google_subject_default',
-        'developer@reachinbox.test',
+        'developer@scheduler.local',
         'Developer User',
       ],
     );
@@ -53,8 +53,8 @@ export async function ensureDefaultDevUser(): Promise<void> {
       [
         DEFAULT_DEV_SENDER_ID,
         DEFAULT_DEV_USER_ID,
-        'sender@reachinbox.test',
-        'ReachInbox Default Sender',
+        'sender@scheduler.local',
+        'Default Sender',
         'ethereal_default',
         2000,
         50,
@@ -182,7 +182,7 @@ export async function createTestUserAndSession(options?: {
   googleSubject?: string;
 }): Promise<{ user: AuthenticatedUser; sessionToken: string; cookieHeader: string }> {
   const googleSubject = options?.googleSubject || `test_sub_${Date.now()}_${Math.random()}`;
-  const email = options?.email || `test_${Date.now()}@reachinbox.test`;
+  const email = options?.email || `test_${Date.now()}@scheduler.local`;
   const name = options?.name || 'Test User';
 
   const userRes = await query<AuthenticatedUser>(

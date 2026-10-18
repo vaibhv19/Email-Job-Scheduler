@@ -5,7 +5,7 @@ import {
   closeRedis,
   reserveRateLimitSlot,
   resetSenderRateLimits,
-} from '@reachinbox/redis';
+} from '@email-scheduler/redis';
 
 describe('Distributed Rate Limiting: Minimum Delay & Sender Spacing (RATE-02, RATE-03, RATE-06)', () => {
   let redisClient: ReturnType<typeof getRedisClient>;

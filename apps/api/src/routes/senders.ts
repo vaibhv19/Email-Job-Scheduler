@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { query } from '@reachinbox/db';
+import { query } from '@email-scheduler/db';
 import { requireUser } from '../middleware/auth.js';
 
 export const sendersRouter = Router();

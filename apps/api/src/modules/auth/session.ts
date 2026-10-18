@@ -1,8 +1,8 @@
 import crypto from 'crypto';
-import { query } from '@reachinbox/db';
+import { query } from '@email-scheduler/db';
 import type { AuthenticatedUser } from '../../middleware/auth.js';
 
-export const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'reachinbox_session';
+export const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'email_scheduler_session';
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export interface UserSession {

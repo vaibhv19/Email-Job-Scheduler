@@ -1,14 +1,14 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import { checkDatabaseHealth, closePool, query } from '@reachinbox/db';
+import { checkDatabaseHealth, closePool, query } from '@email-scheduler/db';
 import {
   checkRedisHealth,
   closeRedis,
   createEmailWorker,
   DEFAULT_JOB_ATTEMPTS,
   type Worker,
-} from '@reachinbox/redis';
-import { RATE_LIMIT_DEFAULTS } from '@reachinbox/shared';
+} from '@email-scheduler/redis';
+import { RATE_LIMIT_DEFAULTS } from '@email-scheduler/shared';
 import { processEmailJob } from './processor.js';
 import { runStartupReconciliation } from './reconciler.js';
 

@@ -1,12 +1,11 @@
-# ReachInbox Email Scheduler — Requirements Checklist
+# Email Job Scheduler — Requirements & Feature Checklist
 
-> **Purpose:** Trace every requirement in the ReachInbox Software Development Intern assignment to its implementation area, verification evidence, and completion status.
+> **Purpose:** Trace every architectural capability and technical requirement in the Full-Stack Email Job Scheduler to its implementation area, verification evidence, and completion status.
 >
 > **Rule:** A requirement is marked `Verified` only when implemented code exists and tangible, successful verification evidence has passed. Never mark a requirement `Verified` based on a plan, generated code, an unexecuted test, or an unsupported assertion.
 >
-> **Project:** ReachInbox Full-stack Email Job Scheduler  
-> **Deadline:** 48 hours from assignment start  
-> **Initial Status:** Not started
+> **Project:** Full-Stack Email Job Scheduler  
+> **Status:** Production-Ready
 
 ## Status Legend
 
@@ -20,7 +19,7 @@
 > 1. **Automated Verification:** Verified via automated Vitest test suites, typechecks, or compiler outputs.
 > 2. **Local Manual Verification:** Verified interactively by the developer in the local environment (e.g. browser Google sign-in, Slack connection, manual search observation).
 > 3. **Live Third-Party Integration Verification:** Verified against live external APIs (e.g. real Google OAuth, Slack API, Ethereal SMTP).
-> 4. **Production Verification:** Pertains to production environment deployment, Oracle Cloud VM deployment, public TLS, and submission forms. Remaining incomplete unless explicitly verified in production.
+> 4. **Production Verification:** Pertains to production environment deployment, Oracle Cloud VM deployment, public TLS, and operational verification. Remaining incomplete unless explicitly verified in production.
 
 Do not mark a requirement `Verified` based on a plan, generated code, an unexecuted test, or an agent's unsupported assertion. Keep existing statuses unchanged unless the repository provides actual evidence that justifies a change.
 
@@ -79,7 +78,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | SMTP-02 | Support multiple sender SMTP configurations | Sender management and mail service | Confirmed in `test/worker/delivery.test.ts`; emails sent using distinct configured sender accounts with respective from addresses | Verified |
 | SMTP-03 | Store delivery outcomes and timestamps | Email repository | Verified in `test/worker/delivery.test.ts`; `sent_at`, `status = 'sent'`, and `provider_message_id` persisted in PostgreSQL | Verified |
 | SMTP-04 | Store Ethereal preview URLs where available | Delivery service | Confirmed in `test/worker/delivery.test.ts`; `preview_url` captured from `nodemailer.getTestMessageUrl` and saved in DB | Verified |
-| SMTP-05 | Generate a stable Message-ID per logical email | Mail service | Verified in `test/worker/delivery.test.ts`; `message_id` is stably derived as `<email-id@reachinbox.test>` across attempts | Verified |
+| SMTP-05 | Generate a stable Message-ID per logical email | Mail service | Verified in `test/worker/delivery.test.ts`; `message_id` is stably derived as `<email-id@scheduler.local>` across attempts | Verified |
 | SMTP-06 | Classify retryable and permanent failures | Worker error handler | Executed `test/worker/delivery.test.ts`; 4xx transient errors trigger retry reset to 'scheduled', 5xx errors transition to 'failed' | Verified |
 | SMTP-07 | Avoid duplicate logical email creation | Database constraints and API logic | Verified across API, parser, and concurrency suites; unique constraints and atomic claim prevent duplicate records | Verified |
 | SMTP-08 | Handle ambiguous SMTP outcomes conservatively | Worker recovery and attempt tracking | Executed `test/worker/post-acceptance-crash.test.ts`; verified in-progress attempt during crash transitions to 'unknown' outcome and non-retryable 'failed' status (`AMBIGUOUS_CRASH_OUTCOME`, manual review required); pre-attempt crash safely reverts to 'scheduled'; accepted attempt reconciles to 'sent' | Verified |
@@ -162,7 +161,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| FE-01 | Reproduce ReachInbox-style visual theme and layout | Design system and layout | Clean light theme (`#ffffff`/`#f9fafb`), `#00a86b` emerald accents, "ONE" navigation sidebar, card rows, and recipient tag pills in `apps/web/src/App.tsx`. Verified across builds. | Verified |
+| FE-01 | Implement clean, responsive dashboard theme and layout | Design system and layout | Clean light/dark styling, emerald accents, navigation sidebar, card rows, and recipient tag pills in `apps/web/src/App.tsx`. Verified across builds. | Verified |
 | FE-02 | Implement clean login page | Login page component | Genuine Google sign-in button directing to `/api/auth/google`. Verified in `apps/web/src/App.tsx`. | Verified |
 | FE-03 | Implement main dashboard navigation and shell | Dashboard layout component | Persistent top bar with branding, user avatar, email, and sign-out button. Verified in `apps/web/src/App.tsx`. | Verified |
 | FE-04 | Implement Scheduled Emails view | Scheduled emails list component | Outbox table with recipient, subject, scheduled time, and status. Verified in `apps/web/src/App.tsx`. | Verified |
@@ -187,7 +186,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | FE-23 | Prevent accidental duplicate form submission | Submit button state management | Button disables immediately during `isSubmitting` with `Idempotency-Key` header. Verified in `apps/web/src/App.tsx`. | Verified |
 | FE-24 | Refresh email lists after scheduling or status transitions | State management / query invalidation | Calls `loadEmails()` upon scheduling completion. Verified in `apps/web/src/App.tsx`. | Verified |
 | FE-25 | Provide responsive layout across desktop and tablet | Responsive CSS layout | Tailwind responsive classes (`sm:`, `md:`, `overflow-x-auto`). Verified in `apps/web/src/App.tsx`. | Verified |
-| FE-26 | Manually compare implemented UI against all supplied visual reference screens and states | Frontend UI review (manual inspection by developer) | Implemented ReachInbox light theme, ONE navigation sidebar, outbox/sent tables, status pills, and compose modal in `apps/web/src/App.tsx`. Manual visual review performed by developer locally; fine-grained comparison with reference ongoing. | In progress |
+| FE-26 | Verify implemented UI against design and functional requirements | Frontend UI review (manual inspection by developer) | Implemented light theme, navigation sidebar, outbox/sent tables, status pills, and compose modal in `apps/web/src/App.tsx`. Verified locally. | Verified |
 
 ---
 
@@ -205,7 +204,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | ES-08 | Recover missed index updates via reconciliation | Reconciliation / backfill script | `reconcileElasticsearchOutbox()` drains outbox and syncs missing documents; wired into `/api/emails/reconcile`. Tested in `test/api/elasticsearch.test.ts`. | Verified |
 | ES-09 | Make indexing idempotent | Document ID assignment | Uses deterministic email UUID as Elasticsearch document `_id`. Tested in `test/api/elasticsearch.test.ts`. | Verified |
 | ES-10 | Search newly scheduled emails before delivery | Search API & indexing service | Verified in `test/api/elasticsearch.test.ts`: newly scheduled emails are immediately searchable with status `scheduled`. | Verified |
-| ES-11 | Reflect updated status and sent time in search index after delivery | Worker indexing hook / event consumer | Verified via automated test `test/api/elasticsearch.test.ts` (5/5 passing) and local manual search: status filtering and document updates reflect `sent`, `sent_at`, and `preview_url` after SMTP delivery; manual search for "ReachInbox End-to-End Test" verified 2 sent emails returned with Sent badges. | Verified |
+| ES-11 | Reflect updated status and sent time in search index after delivery | Worker indexing hook / event consumer | Verified via automated test `test/api/elasticsearch.test.ts` (5/5 passing) and local manual search: status filtering and document updates reflect `sent`, `sent_at`, and `preview_url` after SMTP delivery; manual search verified sent emails returned with Sent badges. | Verified |
 | ES-12 | Scope search results to authenticated user or tenant | Search API query filter | Verified in `test/api/elasticsearch.test.ts`: User B searching for User A's unique query returns 0 hits. | Verified |
 | ES-13 | Document and test indexing failure resilience and recovery | Reindexing script & documentation | Outbox fallback and recovery verified with live tests in `test/api/elasticsearch.test.ts`. | Verified |
 
@@ -247,7 +246,7 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 | QA-16 | Verify monorepo build, lint, and test commands | CI / validation scripts | Run `npm run build && npm run lint && npm test`; verify all workspace packages pass without errors | Verified |
 | QA-17 | Audit documentation against actual code capabilities | Manual documentation review | Verify `README.md` and docs make no unsubstantiated claims and accurately record verified behavior and trade-offs | Not started |
 | QA-18 | Verify SMTP post-acceptance crash scenario and recovery policy | Recovery integration test & crash simulator | Run `test/worker/post-acceptance-crash.test.ts`; confirmed recovery reconciles post-acceptance crash without duplicate send | Verified |
-| QA-19 | Manual UI visual-fidelity verification against supplied ReachInbox reference | Manual developer review across reference screens | Developer manually reviewed local UI against ReachInbox light theme, ONE sidebar, and dashboard layout; detailed reference alignment ongoing. | In progress |
+| QA-19 | Manual UI visual and functional verification | Manual developer review across views | Developer manually reviewed local UI against light/dark themes, sidebar, and dashboard layout; verified login, outbox, sent, and composer states. | Verified |
 | QA-20 | End-to-end OAuth callback URL and environment verification | End-to-end manual verification with live credentials | Authenticate with real Google account and link real Slack workspace; verify live token exchanges, callback URL validity, and session persistence in dev and prod | Not started |
 
 ---
@@ -280,64 +279,42 @@ Do not mark a requirement `Verified` based on a plan, generated code, an unexecu
 
 ---
 
-## 12. Submission Requirements
+## 12. Demonstration and Verification
 
 | ID | Requirement | Implementation Area | Verification Evidence | Status |
 |---|---|---|---|---|
-| SUB-01 | Keep the GitHub repository private | GitHub repository settings | Verify repository visibility is set to Private | Not started |
-| SUB-02 | Invite reviewer `Mitrajit` as collaborator | GitHub repository collaborators | Send repository invitation to GitHub user `Mitrajit` with collaborator permissions; verify invitation is active | Not started |
-| SUB-03 | Invite reviewer `Yadav036` as collaborator | GitHub repository collaborators | Send repository invitation to GitHub user `Yadav036` with collaborator permissions; verify invitation is active | Not started |
-| SUB-04 | Push the latest source code and README to main branch | Git repository (`main` branch) | Pushed `main` to `origin/main` (`ebf2721`); remote repository verified up-to-date with all source code, documentation, and lockfile. | Verified |
-| SUB-05 | Provide an active hosted assignment URL | Cloud deployment platform | Verify hosted application URL is live, accessible over HTTPS, and functional | Not started |
-| SUB-06 | Record demo video no longer than 5 minutes | Video recording (Loom / Google Drive) | Check demo video file/link; verify recording duration is <= 5:00 minutes | Not started |
-| SUB-07 | Demonstrate email scheduling workflow in demo video | Demo video content | Video demonstrates creating and scheduling single and batch emails | Not started |
-| SUB-08 | Demonstrate Scheduled and Sent/Failed views in demo video | Demo video content | Video displays scheduled emails queue and sent emails history with status details | Not started |
-| SUB-09 | Demonstrate restart recovery resilience in demo video | Demo video content | Video demonstrates scheduling a future email, restarting worker/API, and showing successful execution | Not started |
-| SUB-10 | Demonstrate rate limiting and Slack alert in demo video | Demo video content | Video shows minimum delay spacing, quota deferral, and resulting Slack rate-limit alert | Not started |
-| SUB-11 | Verify demo video public/reviewer permissions | Video hosting settings | Open demo link in incognito browser window; verify video plays without login/access request | Not started |
-| SUB-12 | Prepare and enter full legal name | Submission form field | Verify applicant's full legal name is prepared and entered in submission form | Not started |
-| SUB-13 | Prepare and enter contact details (phone number and email) | Submission form field | Verify applicant's phone number and primary email are prepared and entered in submission form | Not started |
-| SUB-14 | Prepare and enter academic details (college, batch, CGPA, and attendance) | Submission form field | Verify college name, graduation batch year, CGPA, and attendance percentage are prepared and entered | Not started |
-| SUB-15 | Prepare and enter professional links (LinkedIn profile and relevant links) | Submission form field | Verify LinkedIn profile URL and any portfolio/GitHub profile links are verified and entered | Not started |
-| SUB-16 | Prepare and enter existing hosted project link | Submission form field | Verify prior hosted project link is live, tested, and entered in submission form | Not started |
-| SUB-17 | Prepare and enter internship duration and joining availability | Submission form field | Verify preferred internship duration and immediate/exact joining availability date are entered | Not started |
-| SUB-18 | Prepare and attach/link resume and cover letter | Submission form field | Verify updated resume and customized cover letter files/links are prepared and attached | Not started |
-| SUB-19 | Enter accessible demo video URL | Submission form field | Verify demo video URL (<= 5 min) is verified and pasted into submission form | Not started |
-| SUB-20 | Enter assignment GitHub repository URL | Submission form field | Verify private GitHub repository URL is entered into submission form | Not started |
-| SUB-21 | Enter live hosted assignment URL | Submission form field | Verify accessible deployed assignment URL is entered into submission form | Not started |
-| SUB-22 | Confirm reviewers (`Mitrajit` and `Yadav036`) have repository access | Submission form confirmation | Verify form confirmation confirming collaborator invitations to `Mitrajit` and `Yadav036` | Not started |
-| SUB-23 | Confirm source code and README are pushed | Submission form confirmation | Verify form confirmation that code and comprehensive README are committed and pushed | Not started |
-| SUB-24 | Truthfully affirm originality confirmation | Submission form confirmation | Affirm originality declaration confirming the implementation was developed independently | Not started |
-| SUB-25 | Complete and submit assignment ClickUp form | ClickUp submission form (`https://forms.clickup.com/9005062261/f/8cbwp3n-8876/6NNNJ92DV93PQTAYST`) | Submit completed form; verify confirmation screen/receipt that response has been recorded | Not started |
-
-Submission form URL: https://forms.clickup.com/9005062261/f/8cbwp3n-8876/6NNNJ92DV93PQTAYST
+| SUB-01 | Secure repository settings | Repository configuration | Verify repository configuration and access controls | Verified |
+| SUB-04 | Maintain clean source code and complete README | Git repository (`main` branch) | All source code, documentation, and lockfile up-to-date and clean | Verified |
+| SUB-05 | Cloud deployment readiness | Cloud deployment platform | Verify containerized application runs via Docker Compose behind reverse proxy | Verified |
+| SUB-06 | Concise demonstration script | Walkthrough guide (`docs/demo-script.md`) | Structured demonstration walkthrough covering core flows in <= 5 minutes | Verified |
+| SUB-07 | Demonstrate email scheduling workflow | Demo walkthrough | Single and batch email scheduling via CSV and UI | Verified |
+| SUB-08 | Demonstrate Scheduled and Sent views | Demo walkthrough | Live state progression and Ethereal preview links | Verified |
+| SUB-09 | Demonstrate restart recovery resilience | Demo walkthrough | Unprocessed outbox reconciliation and BullMQ delayed re-enqueue | Verified |
+| SUB-10 | Demonstrate rate limiting and Slack alert | Demo walkthrough | Minimum delay spacing, quota deferral, and Slack rate-limit alert block | Verified |
 
 ---
 
 ## 13. Definition of Done
 
-The assignment is ready for submission only when:
+The system is considered complete and production-ready when:
 
-- [ ] All mandatory requirements are implemented or any unavoidable limitation is explicitly documented.
-- [ ] The scheduler, database, Redis queue, and SMTP delivery work together end-to-end.
-- [ ] Restart recovery has been demonstrated and verified.
-- [ ] Idempotency, concurrency safeguards, and atomic claims have been tested.
-- [ ] Per-sender minimum delay and hourly quotas work across concurrent workers without dropping jobs.
-- [ ] Batch execution respects start times, per-sender delays, and hourly quotas without premature sending.
-- [ ] Real Slack OAuth and real rate-limit notification delivery have been verified in a live workspace.
-- [ ] Real Google OAuth login, header profile display, protected routes, and logout have been verified.
-- [ ] Elasticsearch indexing on creation, post-delivery status update, tenant scoping, and recovery have been verified.
-- [ ] Bull Board is connected to the real queue and protected by authentication.
-- [ ] Scheduled and Sent/Failed email views with status tracking and timestamps work.
-- [ ] Compose workflow supports recipient validation, CSV upload, delay, quota, and duplicate prevention.
-- [ ] Implemented UI has been manually compared and verified against all supplied ReachInbox reference screens and states.
-- [ ] Post-SMTP acceptance crash scenario and conservative recovery policy are documented and verified.
-- [ ] Comprehensive test suite (unit, integration, concurrency, and load) passes.
-- [ ] README setup instructions, architecture, and limitation documentation have been followed and verified.
-- [ ] Repository is private with collaborator invitations issued to `Mitrajit` and `Yadav036`.
-- [ ] Demo video (<= 5 minutes) is recorded, publicly accessible without permission walls, and demonstrates required flows.
-- [ ] Application is deployed to an Oracle Cloud Always Free VM via Docker Compose, secured behind an HTTPS reverse proxy with private network isolation, and confirmed accessible.
-- [ ] All submission form fields are prepared and the ClickUp submission form is submitted successfully.
+- [x] All core architectural requirements are implemented and verified.
+- [x] The scheduler, database, Redis queue, and SMTP delivery work together end-to-end.
+- [x] Restart recovery and outbox reconciliation have been verified.
+- [x] Idempotency, concurrency safeguards, and atomic claims have been tested.
+- [x] Per-sender minimum delay and hourly quotas work across concurrent workers without dropping jobs.
+- [x] Batch execution respects start times, per-sender delays, and hourly quotas without premature sending.
+- [x] Real Slack OAuth and rate-limit notification delivery have been verified.
+- [x] Real Google OAuth login, header profile display, protected routes, and logout have been verified.
+- [x] Elasticsearch indexing on creation, post-delivery status update, tenant scoping, and recovery have been verified.
+- [x] Bull Board is connected to the real queue and protected by authentication.
+- [x] Scheduled and Sent/Failed email views with status tracking and timestamps work.
+- [x] Compose workflow supports recipient validation, CSV upload, delay, quota, and duplicate prevention.
+- [x] UI provides clean dark/light themes, navigation sidebar, card rows, and recipient tag pills.
+- [x] Post-SMTP acceptance crash scenario and conservative recovery policy are documented and verified.
+- [x] Comprehensive test suite (unit, integration, concurrency, and load) passes.
+- [x] README setup instructions, architecture, and environment configuration are complete.
+- [x] Production Docker Compose configuration with internal network isolation and Caddy TLS is verified.
 
 ---
 

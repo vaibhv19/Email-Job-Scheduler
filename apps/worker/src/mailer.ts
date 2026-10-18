@@ -148,7 +148,7 @@ export function classifySmtpError(err: unknown): {
  * Sends an email using Nodemailer, generating a stable Message-ID and capturing Ethereal preview URLs (SMTP-01, SMTP-03, SMTP-04, SMTP-05)
  */
 export async function sendEmailViaSmtp(params: SendMailParams): Promise<SendMailResult> {
-  const stableMessageId = `<${params.emailId}@reachinbox.test>`;
+  const stableMessageId = `<${params.emailId}@scheduler.local>`;
   const transporter = await getTransporter(params.smtpConfig);
 
   try {

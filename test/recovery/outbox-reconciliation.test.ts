@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { query, closePool } from '@reachinbox/db';
-import { getEmailQueue, closeQueue, closeRedis } from '@reachinbox/redis';
+import { query, closePool } from '@email-scheduler/db';
+import { getEmailQueue, closeQueue, closeRedis } from '@email-scheduler/redis';
 import { reconcilePendingOutbox } from '../../apps/api/src/services/reconciliation.js';
 import {
   DEFAULT_DEV_SENDER_ID,

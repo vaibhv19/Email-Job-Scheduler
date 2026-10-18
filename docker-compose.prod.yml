@@ -13,7 +13,7 @@ services:
     volumes:
       - reachinbox_postgres_data:/var/lib/postgresql/data
     networks:
-      - reachinbox_network
+      - reachinbox_prod_network
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-reachinbox_scheduler}']
       interval: 10s
@@ -32,7 +32,7 @@ services:
     volumes:
       - reachinbox_redis_data:/data
     networks:
-      - reachinbox_network
+      - reachinbox_prod_network
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
@@ -55,7 +55,7 @@ services:
     volumes:
       - reachinbox_elasticsearch_data:/usr/share/elasticsearch/data
     networks:
-      - reachinbox_network
+      - reachinbox_prod_network
     healthcheck:
       test: ['CMD-SHELL', 'curl -s -f http://localhost:9200/_cluster/health || exit 1']
       interval: 15s
@@ -64,7 +64,7 @@ services:
       start_period: 30s
 
   # ----------------------------------------------------------------------------
-  # 4. Backend API Service (@reachinbox/api)
+  # 4. Backend API Service (@email-scheduler/api)
   # ----------------------------------------------------------------------------
   api:
     build:
@@ -87,7 +87,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - ELASTICSEARCH_NODE=http://elasticsearch:9200
     networks:
-      - reachinbox_network
+      - reachinbox_prod_network
     healthcheck:
       test: ['CMD-SHELL', 'curl -f http://localhost:3001/health || exit 1']
       interval: 10s
@@ -96,7 +96,7 @@ services:
       start_period: 10s
 
   # ----------------------------------------------------------------------------
-  # 5. Background Worker Service (@reachinbox/worker)
+  # 5. Background Worker Service (@email-scheduler/worker)
   # ----------------------------------------------------------------------------
   worker:
     build:
@@ -119,10 +119,10 @@ services:
       - REDIS_URL=redis://redis:6379
       - ELASTICSEARCH_NODE=http://elasticsearch:9200
     networks:
-      - reachinbox_network
+      - reachinbox_prod_network
 
   # ----------------------------------------------------------------------------
-  # 6. Frontend Web SPA (@reachinbox/web)
+  # 6. Frontend Web SPA (@email-scheduler/web)
   # ----------------------------------------------------------------------------
   web:
     build:
@@ -131,7 +131,7 @@ services:
     container_name: reachinbox-prod-web
     restart: unless-stopped
     networks:
-      - reachinbox_network
+      - reachinbox_prod_network
 
   # ----------------------------------------------------------------------------
   # 7. Reverse Proxy & Automated TLS (Caddy)
@@ -148,7 +148,7 @@ services:
       - reachinbox_caddy_data:/data
       - reachinbox_caddy_config:/config
     networks:
-      - reachinbox_network
+      - reachinbox_prod_network
     depends_on:
       - api
       - web
@@ -166,6 +166,6 @@ volumes:
     name: reachinbox_prod_caddy_config
 
 networks:
-  reachinbox_network:
+  reachinbox_prod_network:
     name: reachinbox_prod_network
     driver: bridge

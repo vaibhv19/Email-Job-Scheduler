@@ -45,7 +45,7 @@ authRouter.get('/api/auth/google', (_req: Request, res: Response): void => {
     const client = createGoogleOAuth2Client();
     const { state, codeVerifier, codeChallenge } = generateOAuthParams();
 
-    const sessionSecret = process.env.SESSION_SECRET || 'reachinbox_default_session_secret_32_chars';
+    const sessionSecret = process.env.SESSION_SECRET || 'email_scheduler_default_session_secret_32_chars';
     const signedCookieValue = signOAuthState(
       { state, codeVerifier, createdAt: Date.now() },
       sessionSecret,
@@ -86,7 +86,7 @@ authRouter.get('/api/auth/google', (_req: Request, res: Response): void => {
  * 3. Retrieves and validates verified identity from Google userinfo endpoint.
  * 4. Persists/resolves user in PostgreSQL using Google's stable `sub` identifier.
  * 5. Establishes a real session in user_sessions and sets HTTP-only session cookie.
- * 6. Redirects authenticated user to the ReachInbox dashboard.
+ * 6. Redirects authenticated user to the dashboard.
  */
 authRouter.get('/api/auth/google/callback', async (req: Request, res: Response): Promise<void> => {
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -114,7 +114,7 @@ authRouter.get('/api/auth/google/callback', async (req: Request, res: Response):
   }
 
   // 2. Validate OAuth state from HTTP-only cookie
-  const sessionSecret = process.env.SESSION_SECRET || 'reachinbox_default_session_secret_32_chars';
+  const sessionSecret = process.env.SESSION_SECRET || 'email_scheduler_default_session_secret_32_chars';
   const stateCookie = req.cookies?.[OAUTH_STATE_COOKIE_NAME];
   const verifiedState = verifyOAuthState(stateCookie, sessionSecret);
 

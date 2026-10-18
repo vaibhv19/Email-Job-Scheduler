@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { query, closePool } from '@reachinbox/db';
+import { query, closePool } from '@email-scheduler/db';
 import {
   closeRedis,
   closeQueue,
@@ -8,7 +8,7 @@ import {
   DEFAULT_JOB_ATTEMPTS,
   getRedisClient,
   resetSenderRateLimits,
-} from '@reachinbox/redis';
+} from '@email-scheduler/redis';
 import {
   DEFAULT_DEV_USER_ID,
   DEFAULT_DEV_SENDER_ID,
@@ -75,7 +75,7 @@ describe('Retry Exhaustion & Terminal Failure Handling (RATE-01, SMTP-06, BE-11)
 
     const spy = vi.spyOn(mailer, 'sendEmailViaSmtp').mockResolvedValueOnce({
       success: false,
-      messageId: `<${emailId}@reachinbox.test>`,
+      messageId: `<${emailId}@scheduler.local>`,
       isTransientError: true,
       errorCode: 'SMTP_451',
       errorMessage: '451 4.3.0 Greylisting temporary error',
@@ -135,7 +135,7 @@ describe('Retry Exhaustion & Terminal Failure Handling (RATE-01, SMTP-06, BE-11)
 
     const spy = vi.spyOn(mailer, 'sendEmailViaSmtp').mockResolvedValueOnce({
       success: false,
-      messageId: `<${emailId}@reachinbox.test>`,
+      messageId: `<${emailId}@scheduler.local>`,
       isTransientError: true,
       errorCode: 'SMTP_451',
       errorMessage: '451 4.3.0 Greylisting timeout, final attempt failed',
@@ -189,7 +189,7 @@ describe('Retry Exhaustion & Terminal Failure Handling (RATE-01, SMTP-06, BE-11)
 
     const spy = vi.spyOn(mailer, 'sendEmailViaSmtp').mockResolvedValueOnce({
       success: false,
-      messageId: `<${emailId}@reachinbox.test>`,
+      messageId: `<${emailId}@scheduler.local>`,
       isTransientError: false,
       errorCode: 'SMTP_550',
       errorMessage: '550 5.1.1 User unknown',
